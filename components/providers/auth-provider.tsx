@@ -61,7 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Restore the session from localStorage on first load.
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY)
     const storedUser = localStorage.getItem(USER_KEY)
@@ -86,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         localStorage.setItem(TOKEN_KEY, accessToken)
         localStorage.setItem(USER_KEY, JSON.stringify(mapped))
-        setCookie(TOKEN_KEY, accessToken, 7) // Store token in cookie for 7 days for middleware
+        setCookie(TOKEN_KEY, accessToken, 7)
         
         setUser(mapped)
         return { ok: true }

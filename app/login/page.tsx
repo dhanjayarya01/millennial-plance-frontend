@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useAuth } from "@/components/providers/auth-provider"
 import { AuthAside } from "@/components/auth/auth-aside"
 import { Logo } from "@/components/brand/logo"
+import { DemoCredentials } from "@/components/auth/demo-credentials"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -50,7 +51,6 @@ export default function LoginPage() {
         if (result.ok) {
           setSuccessMessage("Account created successfully! Admin/Manager verification is required before you can log in.")
           setIsSignUp(false)
-          // Reset form fields
           setFullName("")
           setUsername("")
           setPassword("")
@@ -253,6 +253,19 @@ export default function LoginPage() {
               </>
             )}
           </div>
+
+          {!isSignUp && (
+            <>
+              <div className="my-6 h-px bg-border" />
+              <DemoCredentials
+                onPick={(e, p) => {
+                  setEmail(e)
+                  setPassword(p)
+                  setError(null)
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
     </main>

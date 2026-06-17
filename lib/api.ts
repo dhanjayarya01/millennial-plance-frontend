@@ -1,5 +1,3 @@
-// API Client Service for connecting frontend to the Spring Boot backend
-
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export interface BackendUser {
@@ -37,13 +35,11 @@ class ApiService {
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     
-    // Set headers
     const headers = new Headers(options.headers || {});
     if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
 
-    // Attach auth token if present
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("pms-auth-token");
       if (token) {
@@ -91,6 +87,12 @@ class ApiService {
     return this.request<ApiResponse<BackendUser>>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  }
+
+  async getUsers(): Promise<ApiResponse<BackendUser[]>> {
+    return this.request<ApiResponse<BackendUser[]>>("/api/users", {
+      method: "GET",
     });
   }
 }

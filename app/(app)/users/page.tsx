@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Search, Users as UsersIcon, Plus, Mail } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { Input } from "@/components/ui/input"
@@ -10,9 +10,9 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar } from "@/components/ui/avatar"
 import { EmptyState } from "@/components/shared/empty-state"
 import { DataTable, TableRow, TableCell } from "@/components/tables/data-table"
-import { dummyUsers } from "@/data/dummyUsers"
 import { roleLabels } from "@/constants/navigation"
-import type { Role } from "@/types"
+import type { Role, User } from "@/types"
+import { api, BackendUser } from "@/lib/api"
 
 const statusVariant = {
   active: "success",
@@ -21,18 +21,57 @@ const statusVariant = {
 } as const
 
 export default function UsersPage() {
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [role, setRole] = useState<Role | "all">("all")
 
+  useEffect(() => {
+    async function fetchUsers() {
+      try {
+        const res = await api.getUsers()
+        if (res.success && res.data) {
+          const mapped = res.data.map((u: BackendUser) => {
+            const mapRole = (r: string): Role => {
+              if (r === "ROLE_ADMIN") return "admin"
+              if (r === "ROLE_PROJECT_MANAGER") return "manager"
+              return "employee"
+            }
+            return {
+              id: String(u.id),
+              name: u.fullName,
+              email: u.email,
+              password: "",
+              role: mapRole(u.role),
+              avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
+              jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
+              department: "Engineering",
+              status: u.active ? ("active" as const) : ("suspended" as const),
+            }
+          })
+          setUsers(mapped)
+        } else {
+          setError(res.message || "Failed to load users.")
+        }
+      } catch (err: any) {
+        setError(err.message || "An error occurred.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchUsers()
+  }, [])
+
   const filtered = useMemo(() => {
-    return dummyUsers.filter((u) => {
+    return users.filter((u) => {
       const matchesQuery =
         u.name.toLowerCase().includes(query.toLowerCase()) ||
         u.email.toLowerCase().includes(query.toLowerCase())
       const matchesRole = role === "all" || u.role === role
       return matchesQuery && matchesRole
     })
-  }, [query, role])
+  }, [users, query, role])
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,7 +99,13 @@ export default function UsersPage() {
         </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex h-48 items-center justify-center">
+          <div className="size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        </div>
+      ) : error ? (
+        <p className="text-center text-sm text-destructive">{error}</p>
+      ) : filtered.length === 0 ? (
         <EmptyState icon={UsersIcon} title="No users found" description="Try a different search or filter." />
       ) : (
         <DataTable
