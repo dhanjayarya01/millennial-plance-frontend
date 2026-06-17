@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Plus, Search, FolderKanban } from "lucide-react"
 import { useAuth } from "@/components/providers/auth-provider"
 import { PageHeader } from "@/components/layout/page-header"
@@ -10,16 +10,58 @@ import { Select } from "@/components/ui/select"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ProjectCard } from "@/components/projects/project-card"
 import { ProjectFormModal } from "@/components/projects/project-form-modal"
-import { dummyProjects } from "@/data/dummyProjects"
 import type { Project, ProjectStatus } from "@/types"
+import { api, BackendProject } from "@/lib/api"
+
+const mapProject = (p: BackendProject): Project => {
+  const mapStatus = (s: string): ProjectStatus => {
+    const statusLower = s.toLowerCase().replace("_", "-")
+    if (statusLower === "planning" || statusLower === "in-progress" || statusLower === "on-hold" || statusLower === "completed") {
+      return statusLower as ProjectStatus
+    }
+    return "planning"
+  }
+
+  return {
+    id: String(p.id),
+    name: p.name,
+    description: p.description || "",
+    startDate: p.startDate || "",
+    endDate: p.endDate || "",
+    status: mapStatus(p.status),
+    managerId: p.manager ? String(p.manager.id) : "",
+    memberIds: p.assignedEmployees ? p.assignedEmployees.map((e) => String(e.id)) : [],
+    completion: p.progressPercentage || 0,
+  }
+}
 
 export default function ProjectsPage() {
   const { user } = useAuth()
-  const [projects, setProjects] = useState<Project[]>(dummyProjects)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<ProjectStatus | "all">("all")
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Project | null>(null)
+
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        const res = await api.getProjects()
+        if (res.success && res.data) {
+          setProjects(res.data.map(mapProject))
+        } else {
+          setError(res.message || "Failed to load projects.")
+        }
+      } catch (err: any) {
+        setError(err.message || "An error occurred.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadProjects()
+  }, [])
 
   const scoped = useMemo(() => {
     if (!user) return []
@@ -92,7 +134,13 @@ export default function ProjectsPage() {
         </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex h-48 items-center justify-center">
+          <div className="size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        </div>
+      ) : error ? (
+        <p className="text-center text-sm text-destructive">{error}</p>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
           title="No projects found"

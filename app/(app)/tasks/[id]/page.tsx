@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, CalendarClock, Clock, FolderKanban, Hourglass, ListChecks, Pencil } from "lucide-react"
@@ -9,28 +9,122 @@ import { Card } from "@/components/ui/card"
 import { Avatar } from "@/components/ui/avatar"
 import { EmptyState } from "@/components/shared/empty-state"
 import { TaskStatusBadge, PriorityBadge } from "@/components/shared/status-badge"
-import { WorkLogCard } from "@/components/work-logs/work-log-card"
 import { TaskFormModal } from "@/components/tasks/task-form-modal"
 import { useAuth } from "@/components/providers/auth-provider"
-import { getTaskById } from "@/data/dummyTasks"
-import { getProjectById } from "@/data/dummyProjects"
-import { getUserById } from "@/data/dummyUsers"
-import { getWorkLogsByTask } from "@/data/dummyLogs"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Task, WorkLog, WorkLogReply } from "@/types"
+import type { Task, TaskPriority, TaskStatus, Project, ProjectStatus, User, Role } from "@/types"
+import { api, BackendTask } from "@/lib/api"
+
+const mapTask = (t: BackendTask): Task => {
+  const mapPriority = (p: string): TaskPriority => {
+    const pLower = p.toLowerCase()
+    if (pLower === "low" || pLower === "medium" || pLower === "high" || pLower === "urgent") {
+      return pLower as TaskPriority
+    }
+    return "medium"
+  }
+
+  const mapStatus = (s: string): TaskStatus => {
+    const sLower = s.toLowerCase().replace("_", "-")
+    if (sLower === "todo" || sLower === "in-progress" || sLower === "review" || sLower === "done") {
+      return sLower as TaskStatus
+    }
+    return "todo"
+  }
+
+  return {
+    id: String(t.id),
+    name: t.name,
+    description: t.description || "",
+    priority: mapPriority(t.priority),
+    status: mapStatus(t.status),
+    deadline: t.deadline || "",
+    projectId: String(t.projectId),
+    assigneeId: t.employee ? String(t.employee.id) : "",
+    estimatedHours: t.estimatedHours || 0,
+  }
+}
 
 export default function TaskDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const { user } = useAuth()
-  const [task, setTask] = useState<Task | undefined>(() => getTaskById(params.id))
+  const [task, setTask] = useState<Task | undefined>(undefined)
+  const [project, setProject] = useState<Project | undefined>(undefined)
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [logs, setLogs] = useState<WorkLog[]>(() => getWorkLogsByTask(params.id))
 
-  const project = useMemo(() => (task ? getProjectById(task.projectId) : undefined), [task])
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const taskRes = await api.getTaskById(params.id)
+        if (taskRes.success && taskRes.data) {
+          const tMapped = mapTask(taskRes.data)
+          setTask(tMapped)
 
-  if (!task) {
+          const [projectRes, usersRes] = await Promise.all([
+            api.getProjectById(tMapped.projectId),
+            api.getUsers(),
+          ])
+
+          if (projectRes.success) {
+            setProject({
+              id: String(projectRes.data.id),
+              name: projectRes.data.name,
+              description: projectRes.data.description || "",
+              startDate: projectRes.data.startDate || "",
+              endDate: projectRes.data.endDate || "",
+              status: projectRes.data.status.toLowerCase().replace("_", "-") as ProjectStatus,
+              managerId: projectRes.data.manager ? String(projectRes.data.manager.id) : "",
+              memberIds: projectRes.data.assignedEmployees ? projectRes.data.assignedEmployees.map((e) => String(e.id)) : [],
+              completion: projectRes.data.progressPercentage || 0,
+            })
+          }
+
+          if (usersRes.success) {
+            const mapUserRole = (r: string): Role => {
+              if (r === "ROLE_ADMIN") return "admin"
+              if (r === "ROLE_PROJECT_MANAGER") return "manager"
+              return "employee"
+            }
+            setUsers(
+              usersRes.data.map((u) => ({
+                id: String(u.id),
+                name: u.fullName,
+                email: u.email,
+                password: "",
+                role: mapUserRole(u.role),
+                avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
+                jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
+                department: "Engineering",
+                status: u.active ? "active" : "suspended",
+              })),
+            )
+          }
+        } else {
+          setError("Task not found.")
+        }
+      } catch (err: any) {
+        setError(err.message || "An error occurred.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [params.id])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
+    )
+  }
+
+  if (error || !task) {
     return (
       <EmptyState
         icon={ListChecks}
@@ -45,13 +139,9 @@ export default function TaskDetailPage() {
     )
   }
 
-  const assignee = getUserById(task.assigneeId)
+  const assignee = users.find((u) => u.id === task.assigneeId)
   const overdue = task.status !== "done" && isOverdue(task.deadline)
   const canManage = user?.role === "admin" || user?.role === "manager"
-
-  function addReply(logId: string, reply: WorkLogReply) {
-    setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, replies: [...l.replies, reply] } : l)))
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -89,7 +179,6 @@ export default function TaskDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main column */}
         <div className="flex flex-col gap-6 lg:col-span-2">
           <Card className="flex flex-col gap-2 p-5">
             <h2 className="font-heading text-sm font-semibold">Description</h2>
@@ -97,31 +186,8 @@ export default function TaskDetailPage() {
               {task.description || "No description provided."}
             </p>
           </Card>
-
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="font-heading text-sm font-semibold">Work logs</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                {logs.length}
-              </span>
-            </div>
-            {logs.length === 0 ? (
-              <EmptyState
-                icon={ListChecks}
-                title="No work logs yet"
-                description="Progress updates for this task will appear here."
-              />
-            ) : (
-              <div className="flex flex-col gap-4">
-                {logs.map((log) => (
-                  <WorkLogCard key={log.id} log={log} currentUserId={user?.id ?? ""} onReply={addReply} />
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Side column */}
         <div className="flex flex-col gap-6">
           <Card className="flex flex-col gap-4 p-5">
             <h2 className="font-heading text-sm font-semibold">Details</h2>
@@ -144,11 +210,6 @@ export default function TaskDetailPage() {
               valueClassName={overdue ? "text-destructive" : undefined}
             />
             <InfoRow icon={Hourglass} label="Estimated" value={`${task.estimatedHours}h`} />
-            <InfoRow
-              icon={Clock}
-              label="Logged"
-              value={`${logs.reduce((sum, l) => sum + l.hours, 0)}h`}
-            />
           </Card>
         </div>
       </div>

@@ -12,6 +12,31 @@ export interface BackendUser {
   createdAt?: string;
 }
 
+export interface BackendProject {
+  id: number;
+  name: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  manager?: BackendUser | null;
+  assignedEmployees?: BackendUser[] | null;
+  progressPercentage?: number;
+}
+
+export interface BackendTask {
+  id: number;
+  name: string;
+  description: string;
+  priority: string;
+  status: string;
+  deadline: string;
+  estimatedHours?: number;
+  projectId: number;
+  projectName?: string;
+  employee?: BackendUser | null;
+}
+
 export interface AuthResponse {
   accessToken: string;
   tokenType: string;
@@ -93,6 +118,107 @@ class ApiService {
   async getUsers(): Promise<ApiResponse<BackendUser[]>> {
     return this.request<ApiResponse<BackendUser[]>>("/api/users", {
       method: "GET",
+    });
+  }
+
+  async getProjects(): Promise<ApiResponse<BackendProject[]>> {
+    return this.request<ApiResponse<BackendProject[]>>("/api/projects", {
+      method: "GET",
+    });
+  }
+
+  async getProjectById(id: string): Promise<ApiResponse<BackendProject>> {
+    return this.request<ApiResponse<BackendProject>>(`/api/projects/${id}`, {
+      method: "GET",
+    });
+  }
+
+  async createProject(data: {
+    name: string;
+    description: string;
+    startDate: string;
+    endDate?: string;
+    status: string;
+    managerId?: number | null;
+  }): Promise<ApiResponse<BackendProject>> {
+    return this.request<ApiResponse<BackendProject>>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(id: string, data: {
+    name: string;
+    description: string;
+    startDate: string;
+    endDate?: string;
+    status: string;
+    managerId?: number | null;
+  }): Promise<ApiResponse<BackendProject>> {
+    return this.request<ApiResponse<BackendProject>>(`/api/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProject(id: string): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/projects/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getTasks(): Promise<ApiResponse<BackendTask[]>> {
+    return this.request<ApiResponse<BackendTask[]>>("/api/tasks", {
+      method: "GET",
+    });
+  }
+
+  async getTaskById(id: string): Promise<ApiResponse<BackendTask>> {
+    return this.request<ApiResponse<BackendTask>>(`/api/tasks/${id}`, {
+      method: "GET",
+    });
+  }
+
+  async createTask(projectId: string, data: {
+    name: string;
+    description: string;
+    priority: string;
+    status: string;
+    deadline: string;
+    estimatedHours?: number;
+    employeeId?: number | null;
+  }): Promise<ApiResponse<BackendTask>> {
+    return this.request<ApiResponse<BackendTask>>(`/api/projects/${projectId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTask(id: string, data: {
+    name: string;
+    description: string;
+    priority: string;
+    status: string;
+    deadline: string;
+    estimatedHours?: number;
+    employeeId?: number | null;
+  }): Promise<ApiResponse<BackendTask>> {
+    return this.request<ApiResponse<BackendTask>>(`/api/tasks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTaskStatus(id: string, status: string): Promise<ApiResponse<BackendTask>> {
+    return this.request<ApiResponse<BackendTask>>(`/api/tasks/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async deleteTask(id: string): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/tasks/${id}`, {
+      method: "DELETE",
     });
   }
 }

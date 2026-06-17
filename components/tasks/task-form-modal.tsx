@@ -7,9 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
-import { dummyUsers } from "@/data/dummyUsers"
-import { dummyProjects } from "@/data/dummyProjects"
-import type { Task, TaskPriority, TaskStatus } from "@/types"
+import type { Task, TaskPriority, TaskStatus, ProjectStatus } from "@/types"
+import { api, BackendTask, BackendProject, BackendUser } from "@/lib/api"
 
 interface TaskFormModalProps {
   open: boolean
@@ -24,13 +23,74 @@ const emptyForm = {
   priority: "medium" as TaskPriority,
   status: "todo" as TaskStatus,
   deadline: "",
-  projectId: "p-1",
-  assigneeId: "u-3",
+  projectId: "",
+  assigneeId: "",
   estimatedHours: 8,
+}
+
+const mapTask = (t: BackendTask): Task => {
+  const mapPriority = (p: string): TaskPriority => {
+    const pLower = p.toLowerCase()
+    if (pLower === "low" || pLower === "medium" || pLower === "high" || pLower === "urgent") {
+      return pLower as TaskPriority
+    }
+    return "medium"
+  }
+
+  const mapStatus = (s: string): TaskStatus => {
+    const sLower = s.toLowerCase().replace("_", "-")
+    if (sLower === "todo" || sLower === "in-progress" || sLower === "review" || sLower === "done") {
+      return sLower as TaskStatus
+    }
+    return "todo"
+  }
+
+  return {
+    id: String(t.id),
+    name: t.name,
+    description: t.description || "",
+    priority: mapPriority(t.priority),
+    status: mapStatus(t.status),
+    deadline: t.deadline || "",
+    projectId: String(t.projectId),
+    assigneeId: t.employee ? String(t.employee.id) : "",
+    estimatedHours: t.estimatedHours || 0,
+  }
 }
 
 export function TaskFormModal({ open, onClose, onSave, task }: TaskFormModalProps) {
   const [form, setForm] = useState(emptyForm)
+  const [projects, setProjects] = useState<BackendProject[]>([])
+  const [users, setUsers] = useState<BackendUser[]>([])
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    async function loadResources() {
+      try {
+        const [projectsRes, usersRes] = await Promise.all([
+          api.getProjects(),
+          api.getUsers(),
+        ])
+        if (projectsRes.success && usersRes.success) {
+          setProjects(projectsRes.data)
+          setUsers(usersRes.data)
+          
+          if (!task) {
+            setForm((f) => ({
+              ...f,
+              projectId: projectsRes.data.length > 0 ? String(projectsRes.data[0].id) : "",
+              assigneeId: usersRes.data.length > 0 ? String(usersRes.data[0].id) : "",
+            }))
+          }
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    if (open) {
+      loadResources()
+    }
+  }, [open, task])
 
   useEffect(() => {
     if (task) {
@@ -49,14 +109,34 @@ export function TaskFormModal({ open, onClose, onSave, task }: TaskFormModalProp
     }
   }, [task, open])
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onSave({
-      id: task?.id ?? `t-${Date.now()}`,
-      ...form,
-      estimatedHours: Number(form.estimatedHours),
-    })
-    onClose()
+    setSubmitting(true)
+    try {
+      const payload = {
+        name: form.name,
+        description: form.description,
+        priority: form.priority.toUpperCase(),
+        status: form.status.toUpperCase().replace("-", "_"),
+        deadline: form.deadline,
+        estimatedHours: Number(form.estimatedHours),
+        employeeId: form.assigneeId ? Number(form.assigneeId) : null,
+      }
+      let savedTask: Task
+      if (task) {
+        const res = await api.updateTask(task.id, payload)
+        savedTask = mapTask(res.data)
+      } else {
+        const res = await api.createTask(form.projectId, payload)
+        savedTask = mapTask(res.data)
+      }
+      onSave(savedTask)
+      onClose()
+    } catch (err: any) {
+      alert(err.message || "Failed to save task.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -67,11 +147,11 @@ export function TaskFormModal({ open, onClose, onSave, task }: TaskFormModalProp
       description="Capture the work, priority and ownership."
       footer={
         <>
-          <Button variant="outline" onClick={onClose} type="button">
+          <Button variant="outline" onClick={onClose} type="button" disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" form="task-form">
-            {task ? "Save changes" : "Create task"}
+          <Button type="submit" form="task-form" disabled={submitting}>
+            {submitting ? "Saving..." : task ? "Save changes" : "Create task"}
           </Button>
         </>
       }
@@ -131,8 +211,9 @@ export function TaskFormModal({ open, onClose, onSave, task }: TaskFormModalProp
               id="t-project"
               value={form.projectId}
               onChange={(e) => setForm({ ...form, projectId: e.target.value })}
+              disabled={!!task}
             >
-              {dummyProjects.map((p) => (
+              {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
@@ -146,9 +227,9 @@ export function TaskFormModal({ open, onClose, onSave, task }: TaskFormModalProp
               value={form.assigneeId}
               onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
             >
-              {dummyUsers.map((u) => (
+              {users.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.name}
+                  {u.fullName}
                 </option>
               ))}
             </Select>

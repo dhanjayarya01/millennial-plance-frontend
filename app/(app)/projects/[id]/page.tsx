@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -20,15 +20,63 @@ import { Avatar } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ProjectStatusBadge, TaskStatusBadge, PriorityBadge } from "@/components/shared/status-badge"
-import { ActivityItem } from "@/components/shared/activity-item"
 import { ProjectFormModal } from "@/components/projects/project-form-modal"
-import { getProjectById } from "@/data/dummyProjects"
-import { getTasksByProject } from "@/data/dummyTasks"
-import { getUserById } from "@/data/dummyUsers"
-import { getActivityByProject } from "@/data/dummyLogs"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Project, TaskStatus } from "@/types"
+import type { Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, Role } from "@/types"
+import { api, BackendProject, BackendTask } from "@/lib/api"
+
+const mapProject = (p: BackendProject): Project => {
+  const mapStatus = (s: string): ProjectStatus => {
+    const statusLower = s.toLowerCase().replace("_", "-")
+    if (statusLower === "planning" || statusLower === "in-progress" || statusLower === "on-hold" || statusLower === "completed") {
+      return statusLower as ProjectStatus
+    }
+    return "planning"
+  }
+
+  return {
+    id: String(p.id),
+    name: p.name,
+    description: p.description || "",
+    startDate: p.startDate || "",
+    endDate: p.endDate || "",
+    status: mapStatus(p.status),
+    managerId: p.manager ? String(p.manager.id) : "",
+    memberIds: p.assignedEmployees ? p.assignedEmployees.map((e) => String(e.id)) : [],
+    completion: p.progressPercentage || 0,
+  }
+}
+
+const mapTask = (t: BackendTask): Task => {
+  const mapPriority = (p: string): TaskPriority => {
+    const pLower = p.toLowerCase()
+    if (pLower === "low" || pLower === "medium" || pLower === "high" || pLower === "urgent") {
+      return pLower as TaskPriority
+    }
+    return "medium"
+  }
+
+  const mapStatus = (s: string): TaskStatus => {
+    const sLower = s.toLowerCase().replace("_", "-")
+    if (sLower === "todo" || sLower === "in-progress" || sLower === "review" || sLower === "done") {
+      return sLower as TaskStatus
+    }
+    return "todo"
+  }
+
+  return {
+    id: String(t.id),
+    name: t.name,
+    description: t.description || "",
+    priority: mapPriority(t.priority),
+    status: mapStatus(t.status),
+    deadline: t.deadline || "",
+    projectId: String(t.projectId),
+    assigneeId: t.employee ? String(t.employee.id) : "",
+    estimatedHours: t.estimatedHours || 0,
+  }
+}
 
 function daysBetween(start: string, end: string) {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000))
@@ -38,16 +86,80 @@ export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const { user } = useAuth()
-  const [project, setProject] = useState<Project | undefined>(() => getProjectById(params.id))
+  const [project, setProject] = useState<Project | undefined>(undefined)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  const tasks = useMemo(() => (project ? getTasksByProject(project.id) : []), [project])
-  const activity = useMemo(
-    () => (project ? getActivityByProject(project.id, project.managerId) : []),
-    [project],
-  )
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [projectRes, tasksRes, usersRes] = await Promise.all([
+          api.getProjectById(params.id),
+          api.getTasks(),
+          api.getUsers(),
+        ])
 
-  if (!project) {
+        if (projectRes.success && tasksRes.success && usersRes.success) {
+          const mapUserRole = (r: string): Role => {
+            if (r === "ROLE_ADMIN") return "admin"
+            if (r === "ROLE_PROJECT_MANAGER") return "manager"
+            return "employee"
+          }
+
+          const uList = usersRes.data.map((u) => ({
+            id: String(u.id),
+            name: u.fullName,
+            email: u.email,
+            password: "",
+            role: mapUserRole(u.role),
+            avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
+            jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
+            department: "Engineering",
+            status: u.active ? ("active" as const) : ("suspended" as const),
+          }))
+
+          setUsers(uList)
+          setProject(mapProject(projectRes.data))
+          
+          const filteredTasks = tasksRes.data
+            .filter((t) => String(t.projectId) === params.id)
+            .map(mapTask)
+          setTasks(filteredTasks)
+        } else {
+          setError("Project details not found.")
+        }
+      } catch (err: any) {
+        setError(err.message || "An error occurred.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [params.id])
+
+  async function handleDeleteProject() {
+    if (!project) return
+    if (!confirm("Are you sure you want to delete this project?")) return
+    try {
+      await api.deleteProject(project.id)
+      router.push("/projects")
+    } catch (err: any) {
+      alert(err.message || "Failed to delete project.")
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
+    )
+  }
+
+  if (error || !project) {
     return (
       <EmptyState
         icon={FolderKanban}
@@ -62,8 +174,8 @@ export default function ProjectDetailPage() {
     )
   }
 
-  const manager = getUserById(project.managerId)
-  const members = project.memberIds.map((id) => getUserById(id)).filter(Boolean)
+  const manager = users.find((u) => u.id === project.managerId)
+  const members = project.memberIds.map((id) => users.find((u) => u.id === id)).filter(Boolean) as User[]
   const canManage = user?.role === "admin" || user?.role === "manager"
 
   const statusCounts: Record<TaskStatus, number> = {
@@ -100,7 +212,7 @@ export default function ProjectDetailPage() {
             <Button
               variant="outline"
               className="text-destructive hover:bg-destructive/10 hover:text-destructive [&_svg]:text-destructive"
-              onClick={() => router.push("/projects")}
+              onClick={handleDeleteProject}
             >
               <Trash2 className="size-4" />
               Delete
@@ -110,7 +222,6 @@ export default function ProjectDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main column */}
         <div className="flex flex-col gap-6 lg:col-span-2">
           <Card className="flex flex-col gap-4 p-5">
             <div className="flex items-center justify-between">
@@ -138,7 +249,7 @@ export default function ProjectDetailPage() {
             ) : (
               <ul className="flex flex-col divide-y divide-border">
                 {tasks.map((t) => {
-                  const assignee = getUserById(t.assigneeId)
+                  const assignee = users.find((u) => u.id === t.assigneeId)
                   const overdue = t.status !== "done" && isOverdue(t.deadline)
                   return (
                     <li key={t.id}>
@@ -174,7 +285,6 @@ export default function ProjectDetailPage() {
           </Card>
         </div>
 
-        {/* Side column */}
         <div className="flex flex-col gap-6">
           <Card className="flex flex-col gap-4 p-5">
             <h2 className="font-heading text-sm font-semibold">Details</h2>
@@ -209,33 +319,16 @@ export default function ProjectDetailPage() {
             </div>
             <ul className="flex flex-col gap-3">
               {members.map((m) => (
-                <li key={m!.id} className="flex items-center gap-2">
-                  <Avatar name={m!.name} size="sm" role={m!.role} />
+                <li key={m.id} className="flex items-center gap-2">
+                  <Avatar name={m.name} size="sm" role={m.role} />
                   <div>
-                    <p className="text-sm font-medium">{m!.name}</p>
-                    <p className="text-xs text-muted-foreground">{m!.jobTitle}</p>
+                    <p className="text-sm font-medium">{m.name}</p>
+                    <p className="text-xs text-muted-foreground">{m.jobTitle}</p>
                   </div>
                 </li>
               ))}
             </ul>
           </Card>
-
-          {activity.length > 0 && (
-            <Card className="flex flex-col gap-3 p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="font-heading text-sm font-semibold">Project activity</h2>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {activity.length}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">Manager activity shown first, then the team.</p>
-              <ul className="flex flex-col gap-2">
-                {activity.map((a) => (
-                  <ActivityItem key={a.id} log={a} />
-                ))}
-              </ul>
-            </Card>
-          )}
         </div>
       </div>
 

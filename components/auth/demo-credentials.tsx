@@ -4,9 +4,9 @@ import { Shield, UserCog, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const demos = [
-  { role: "Admin", email: "admin@test.com", password: "admin123", icon: Shield },
-  { role: "Manager", email: "manager@test.com", password: "manager123", icon: UserCog },
-  { role: "Employee", email: "employee@test.com", password: "employee123", icon: User },
+  { role: "Admin", email: "admin@millennial.com", password: "Wwewwe12@", icon: Shield },
+  { role: "Manager", email: "manager@test.com", password: "Wwewwe12@", icon: UserCog },
+  { role: "Employee", email: "employee@test.com", password: "Wwewwe12@", icon: User },
 ]
 
 interface DemoCredentialsProps {

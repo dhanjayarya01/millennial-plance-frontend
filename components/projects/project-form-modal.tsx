@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
-import { dummyUsers } from "@/data/dummyUsers"
 import type { Project, ProjectStatus } from "@/types"
+import { api, BackendProject, BackendUser } from "@/lib/api"
 
 interface ProjectFormModalProps {
   open: boolean
@@ -23,13 +23,56 @@ const emptyForm = {
   startDate: "",
   endDate: "",
   status: "planning" as ProjectStatus,
-  managerId: "u-2",
+  managerId: "",
   completion: 0,
+}
+
+const mapProject = (p: BackendProject): Project => {
+  const mapStatus = (s: string): ProjectStatus => {
+    const statusLower = s.toLowerCase().replace("_", "-")
+    if (statusLower === "planning" || statusLower === "in-progress" || statusLower === "on-hold" || statusLower === "completed") {
+      return statusLower as ProjectStatus
+    }
+    return "planning"
+  }
+
+  return {
+    id: String(p.id),
+    name: p.name,
+    description: p.description || "",
+    startDate: p.startDate || "",
+    endDate: p.endDate || "",
+    status: mapStatus(p.status),
+    managerId: p.manager ? String(p.manager.id) : "",
+    memberIds: p.assignedEmployees ? p.assignedEmployees.map((e) => String(e.id)) : [],
+    completion: p.progressPercentage || 0,
+  }
 }
 
 export function ProjectFormModal({ open, onClose, onSave, project }: ProjectFormModalProps) {
   const [form, setForm] = useState(emptyForm)
-  const managers = dummyUsers.filter((u) => u.role === "manager")
+  const [managers, setManagers] = useState<BackendUser[]>([])
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    async function loadManagers() {
+      try {
+        const res = await api.getUsers()
+        if (res.success && res.data) {
+          const mList = res.data.filter((u) => u.role === "ROLE_PROJECT_MANAGER")
+          setManagers(mList)
+          if (!project && mList.length > 0) {
+            setForm((f) => ({ ...f, managerId: String(mList[0].id) }))
+          }
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    if (open) {
+      loadManagers()
+    }
+  }, [open, project])
 
   useEffect(() => {
     if (project) {
@@ -47,15 +90,33 @@ export function ProjectFormModal({ open, onClose, onSave, project }: ProjectForm
     }
   }, [project, open])
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onSave({
-      id: project?.id ?? `p-${Date.now()}`,
-      memberIds: project?.memberIds ?? [],
-      ...form,
-      completion: Number(form.completion),
-    })
-    onClose()
+    setSubmitting(true)
+    try {
+      const payload = {
+        name: form.name,
+        description: form.description,
+        startDate: form.startDate,
+        endDate: form.endDate || undefined,
+        status: form.status.toUpperCase().replace("-", "_"),
+        managerId: form.managerId ? Number(form.managerId) : null,
+      }
+      let savedProject: Project
+      if (project) {
+        const res = await api.updateProject(project.id, payload)
+        savedProject = mapProject(res.data)
+      } else {
+        const res = await api.createProject(payload)
+        savedProject = mapProject(res.data)
+      }
+      onSave(savedProject)
+      onClose()
+    } catch (err: any) {
+      alert(err.message || "Failed to save project.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -66,11 +127,11 @@ export function ProjectFormModal({ open, onClose, onSave, project }: ProjectForm
       description="Define the project details and assign a manager."
       footer={
         <>
-          <Button variant="outline" onClick={onClose} type="button">
+          <Button variant="outline" onClick={onClose} type="button" disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" form="project-form">
-            {project ? "Save changes" : "Create project"}
+          <Button type="submit" form="project-form" disabled={submitting}>
+            {submitting ? "Saving..." : project ? "Save changes" : "Create project"}
           </Button>
         </>
       }
@@ -140,7 +201,7 @@ export function ProjectFormModal({ open, onClose, onSave, project }: ProjectForm
             >
               {managers.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
+                  {m.fullName}
                 </option>
               ))}
             </Select>

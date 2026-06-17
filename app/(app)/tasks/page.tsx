@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Plus, Search, LayoutGrid, Table2, ListChecks } from "lucide-react"
@@ -15,24 +15,107 @@ import { DataTable, TableRow, TableCell } from "@/components/tables/data-table"
 import { TaskStatusBadge, PriorityBadge } from "@/components/shared/status-badge"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskFormModal } from "@/components/tasks/task-form-modal"
-import { dummyTasks } from "@/data/dummyTasks"
-import { getProjectById } from "@/data/dummyProjects"
-import { getUserById } from "@/data/dummyUsers"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Task, TaskPriority } from "@/types"
+import type { Task, TaskPriority, TaskStatus, Project, ProjectStatus, User, Role } from "@/types"
+import { api, BackendTask } from "@/lib/api"
+
+const mapTask = (t: BackendTask): Task => {
+  const mapPriority = (p: string): TaskPriority => {
+    const pLower = p.toLowerCase()
+    if (pLower === "low" || pLower === "medium" || pLower === "high" || pLower === "urgent") {
+      return pLower as TaskPriority
+    }
+    return "medium"
+  }
+
+  const mapStatus = (s: string): TaskStatus => {
+    const sLower = s.toLowerCase().replace("_", "-")
+    if (sLower === "todo" || sLower === "in-progress" || sLower === "review" || sLower === "done") {
+      return sLower as TaskStatus
+    }
+    return "todo"
+  }
+
+  return {
+    id: String(t.id),
+    name: t.name,
+    description: t.description || "",
+    priority: mapPriority(t.priority),
+    status: mapStatus(t.status),
+    deadline: t.deadline || "",
+    projectId: String(t.projectId),
+    assigneeId: t.employee ? String(t.employee.id) : "",
+    estimatedHours: t.estimatedHours || 0,
+  }
+}
 
 type View = "board" | "table"
 
 export default function TasksPage() {
   const { user } = useAuth()
   const router = useRouter()
-  const [tasks, setTasks] = useState<Task[]>(dummyTasks)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<View>("board")
   const [query, setQuery] = useState("")
   const [priority, setPriority] = useState<TaskPriority | "all">("all")
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [tasksRes, projectsRes, usersRes] = await Promise.all([
+          api.getTasks(),
+          api.getProjects(),
+          api.getUsers(),
+        ])
+
+        if (tasksRes.success && projectsRes.success && usersRes.success) {
+          const mapUserRole = (r: string): Role => {
+            if (r === "ROLE_ADMIN") return "admin"
+            if (r === "ROLE_PROJECT_MANAGER") return "manager"
+            return "employee"
+          }
+
+          setTasks(tasksRes.data.map(mapTask))
+          setProjects(projectsRes.data.map((p) => ({
+            id: String(p.id),
+            name: p.name,
+            description: p.description || "",
+            startDate: p.startDate || "",
+            endDate: p.endDate || "",
+            status: p.status.toLowerCase().replace("_", "-") as ProjectStatus,
+            managerId: p.manager ? String(p.manager.id) : "",
+            memberIds: p.assignedEmployees ? p.assignedEmployees.map((e) => String(e.id)) : [],
+            completion: p.progressPercentage || 0,
+          })))
+          setUsers(usersRes.data.map((u) => ({
+            id: String(u.id),
+            name: u.fullName,
+            email: u.email,
+            password: "",
+            role: mapUserRole(u.role),
+            avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
+            jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
+            department: "Engineering",
+            status: u.active ? "active" : "suspended",
+          })))
+        } else {
+          setError("Failed to load task details.")
+        }
+      } catch (err: any) {
+        setError(err.message || "An error occurred.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
 
   const scoped = useMemo(() => {
     if (!user) return []
@@ -117,7 +200,13 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex h-48 items-center justify-center">
+          <div className="size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        </div>
+      ) : error ? (
+        <p className="text-center text-sm text-destructive">{error}</p>
+      ) : filtered.length === 0 ? (
         <EmptyState icon={ListChecks} title="No tasks found" description="Adjust your filters or create a new task." />
       ) : view === "board" ? (
         <KanbanBoard tasks={filtered} onSelect={(t) => router.push(`/tasks/${t.id}`)} />
@@ -133,7 +222,8 @@ export default function TasksPage() {
           ]}
         >
           {filtered.map((t) => {
-            const assignee = getUserById(t.assigneeId)
+            const assignee = users.find((u) => u.id === t.assigneeId)
+            const project = projects.find((p) => p.id === t.projectId)
             const overdue = t.status !== "done" && isOverdue(t.deadline)
             return (
               <TableRow
@@ -145,7 +235,7 @@ export default function TasksPage() {
                     {t.name}
                   </Link>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{getProjectById(t.projectId)?.name}</TableCell>
+                <TableCell className="text-muted-foreground">{project?.name || "Unknown Project"}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Avatar name={assignee?.name ?? "?"} size="sm" role={assignee?.role} />
