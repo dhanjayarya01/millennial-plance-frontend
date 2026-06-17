@@ -145,17 +145,15 @@ export default function TaskDetailPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link
-        href="/tasks"
-        className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back to tasks
-      </Link>
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/tasks"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ArrowLeft className="size-3" />
+            </Link>
             <h1 className="font-heading text-2xl font-semibold tracking-tight text-balance">{task.name}</h1>
             <TaskStatusBadge status={task.status} />
             <PriorityBadge priority={task.priority} />
@@ -163,7 +161,7 @@ export default function TaskDetailPage() {
           {project && (
             <Link
               href={`/projects/${project.id}`}
-              className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+              className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary pl-8"
             >
               <FolderKanban className="size-4" />
               {project.name}

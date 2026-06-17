@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -14,8 +15,13 @@ interface ModalProps {
   className?: string
 }
 
-// Lightweight, dependency-free modal dialog with backdrop and escape handling.
 export function Modal({ open, onClose, title, description, children, footer, className }: ModalProps) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
@@ -29,9 +35,9 @@ export function Modal({ open, onClose, title, description, children, footer, cla
     }
   }, [open, onClose])
 
-  if (!open) return null
+  if (!open || !mounted) return null
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
         className="absolute inset-0 bg-foreground/40 backdrop-blur-sm animate-fade-in"
@@ -64,6 +70,8 @@ export function Modal({ open, onClose, title, description, children, footer, cla
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-border p-5">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
+

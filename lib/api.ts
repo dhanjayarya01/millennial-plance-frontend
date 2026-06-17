@@ -221,6 +221,37 @@ class ApiService {
       method: "DELETE",
     });
   }
+
+  async updateUserRole(id: string, role: string): Promise<ApiResponse<BackendUser>> {
+    return this.request<ApiResponse<BackendUser>>(`/api/users/${id}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async deleteUser(id: string): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/users/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async assignManager(projectId: string, managerId: string): Promise<ApiResponse<BackendProject>> {
+    return this.request<ApiResponse<BackendProject>>(`/api/projects/${projectId}/manager/${managerId}`, {
+      method: "PUT",
+    });
+  }
+
+  async assignEmployee(projectId: string, employeeId: string): Promise<ApiResponse<BackendProject>> {
+    return this.request<ApiResponse<BackendProject>>(`/api/projects/${projectId}/employees/${employeeId}`, {
+      method: "POST",
+    });
+  }
+
+  async removeEmployee(projectId: string, employeeId: string): Promise<ApiResponse<BackendProject>> {
+    return this.request<ApiResponse<BackendProject>>(`/api/projects/${projectId}/employees/${employeeId}`, {
+      method: "DELETE",
+    });
+  }
 }
 
 export const api = new ApiService();

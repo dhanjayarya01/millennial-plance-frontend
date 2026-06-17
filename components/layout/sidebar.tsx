@@ -13,9 +13,11 @@ import { cn } from "@/lib/utils"
 interface SidebarProps {
   mobileOpen: boolean
   onClose: () => void
+  width?: number
+  onResize?: (e: React.MouseEvent) => void
 }
 
-export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
+export function Sidebar({ mobileOpen, onClose, width = 256, onResize }: SidebarProps) {
   const { user } = useAuth()
   const pathname = usePathname()
   if (!user) return null
@@ -82,12 +84,20 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
 
   return (
     <>
-      {/* Desktop */}
-      <aside className="hidden w-64 shrink-0 border-r border-sidebar-border lg:block">
-        <div className="fixed h-screen w-64">{content}</div>
+      <aside style={{ width: `${width}px` }} className="relative hidden shrink-0 border-r border-sidebar-border lg:block">
+        <div style={{ width: `${width}px` }} className="fixed h-screen border-r border-sidebar-border bg-sidebar">{content}</div>
+        {onResize && (
+          <div
+            onMouseDown={onResize}
+            className="absolute top-0 -right-1.5 h-full w-3 cursor-col-resize hover:bg-primary/10 active:bg-primary/20 transition-all z-50 flex items-center justify-center group"
+            role="separator"
+            aria-label="Resize sidebar"
+          >
+            <div className="w-[1px] h-full bg-border group-hover:bg-primary group-active:bg-primary transition-colors" />
+          </div>
+        )}
       </aside>
 
-      {/* Mobile drawer */}
       <div
         className={cn(
           "fixed inset-0 z-50 lg:hidden",

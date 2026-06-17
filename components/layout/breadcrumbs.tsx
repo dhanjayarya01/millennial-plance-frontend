@@ -22,6 +22,10 @@ export function Breadcrumbs() {
   const pathname = usePathname()
   const segments = pathname.split("/").filter(Boolean)
 
+  if (segments.length > 1 && (segments.includes("projects") || segments.includes("tasks"))) {
+    return null
+  }
+
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
       <Link href="/dashboard" className="flex items-center gap-1 hover:text-foreground">

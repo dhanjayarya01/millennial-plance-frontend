@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { Search, Users as UsersIcon, Plus, Mail } from "lucide-react"
+import { Search, Users as UsersIcon, Plus, Mail, Trash2 } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -13,6 +13,7 @@ import { DataTable, TableRow, TableCell } from "@/components/tables/data-table"
 import { roleLabels } from "@/constants/navigation"
 import type { Role, User } from "@/types"
 import { api, BackendUser } from "@/lib/api"
+import { useAuth } from "@/components/providers/auth-provider"
 
 const statusVariant = {
   active: "success",
@@ -21,6 +22,7 @@ const statusVariant = {
 } as const
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +75,39 @@ export default function UsersPage() {
     })
   }, [users, query, role])
 
+  async function handleRoleChange(userId: string, newRole: Role) {
+    try {
+      const dbRoleMap = {
+        admin: "ROLE_ADMIN",
+        manager: "ROLE_PROJECT_MANAGER",
+        employee: "ROLE_EMPLOYEE",
+      }
+      const res = await api.updateUserRole(userId, dbRoleMap[newRole])
+      if (res.success) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+        )
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to update user role.")
+    }
+  }
+
+  async function handleDeleteUser(userId: string) {
+    if (!confirm("Are you sure you want to delete this user?")) return
+    try {
+      const res = await api.deleteUser(userId)
+      if (res.success) {
+        setUsers((prev) => prev.filter((u) => u.id !== userId))
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete user.")
+    }
+  }
+
+  const isAdmin = currentUser?.role === "admin"
+  const isManager = currentUser?.role === "manager"
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -114,7 +149,7 @@ export default function UsersPage() {
             { label: "Role" },
             { label: "Department" },
             { label: "Status" },
-            { label: "", className: "w-12" },
+            { label: "Actions", className: "w-24 text-right" },
           ]}
         >
           {filtered.map((u) => (
@@ -129,7 +164,19 @@ export default function UsersPage() {
                 </div>
               </TableCell>
               <TableCell>
-                <Badge variant={u.role === "admin" ? "default" : "neutral"}>{roleLabels[u.role]}</Badge>
+                {isAdmin ? (
+                  <select
+                    value={u.role}
+                    onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
+                    className="h-8 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="admin">Administrator</option>
+                    <option value="manager">Project Manager</option>
+                    <option value="employee">Employee</option>
+                  </select>
+                ) : (
+                  <Badge variant={u.role === "admin" ? "default" : "neutral"}>{roleLabels[u.role]}</Badge>
+                )}
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{u.department}</TableCell>
               <TableCell>
@@ -138,13 +185,25 @@ export default function UsersPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                <a
-                  href={`mailto:${u.email}`}
-                  className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  aria-label={`Email ${u.name}`}
-                >
-                  <Mail className="size-4" />
-                </a>
+                <div className="flex items-center justify-end gap-2">
+                  <a
+                    href={`mailto:${u.email}`}
+                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label={`Email ${u.name}`}
+                  >
+                    <Mail className="size-4" />
+                  </a>
+                  {(isAdmin || isManager) && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteUser(u.id)}
+                      className="flex size-8 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10"
+                      aria-label={`Delete ${u.name}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           ))}

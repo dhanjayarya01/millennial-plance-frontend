@@ -8,15 +8,34 @@ import { Navbar } from "@/components/layout/navbar"
 import { Breadcrumbs } from "@/components/layout/breadcrumbs"
 import { Logo } from "@/components/brand/logo"
 
-// Protected shell: redirects unauthenticated users to the login screen.
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(256)
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login")
   }, [user, loading, router])
+
+  const handleResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(180, Math.min(400, startWidth + (moveEvent.clientX - startX)))
+      setSidebarWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+    }
+
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+  }
 
   if (loading || !user) {
     return (
@@ -31,7 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} width={sidebarWidth} onResize={handleResize} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
