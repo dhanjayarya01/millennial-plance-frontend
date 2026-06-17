@@ -108,6 +108,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [teamModalOpen, setTeamModalOpen] = useState(false)
+  const [isEditingTeam, setIsEditingTeam] = useState(false)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -234,6 +235,12 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     loadData()
   }, [params.id])
+
+  useEffect(() => {
+    if (teamModalOpen) {
+      setIsEditingTeam(false)
+    }
+  }, [teamModalOpen])
 
   const renderUserProjectStatus = (uId: string, uRole: string) => {
     if (uRole !== "employee") return null
@@ -538,16 +545,22 @@ export default function ProjectDetailPage() {
                     
                     let cardStyle: React.CSSProperties = {}
                     if (t.priority === "urgent") {
-                      const opacity = Math.max(0.4, 1 - highUrgentCount * 0.12)
+                      const darkRedR = Math.max(127, 185 - highUrgentCount * 15)
+                      const darkRedG = Math.max(20, 28 - highUrgentCount * 2)
+                      const darkRedB = Math.max(20, 28 - highUrgentCount * 2)
+                      const opacity = Math.max(0.6, 1 - highUrgentCount * 0.08)
                       cardStyle = {
-                        borderColor: `rgba(239, 68, 68, ${opacity})`,
-                        borderWidth: "1.5px"
+                        borderColor: `rgba(${darkRedR}, ${darkRedG}, ${darkRedB}, ${opacity})`,
+                        borderWidth: "1.75px"
                       }
                       highUrgentCount++
                     } else if (t.priority === "high") {
-                      const opacity = Math.max(0.3, 0.7 - highUrgentCount * 0.1)
+                      const r = Math.min(250, 220 + highUrgentCount * 8)
+                      const g = Math.min(200, 38 + highUrgentCount * 25)
+                      const b = Math.min(200, 38 + highUrgentCount * 25)
+                      const opacity = Math.max(0.5, 0.85 - highUrgentCount * 0.08)
                       cardStyle = {
-                        borderColor: `rgba(244, 63, 94, ${opacity})`,
+                        borderColor: `rgba(${r}, ${g}, ${b}, ${opacity})`,
                         borderWidth: "1.5px"
                       }
                       highUrgentCount++
@@ -778,85 +791,137 @@ export default function ProjectDetailPage() {
       <Modal
         open={teamModalOpen}
         onClose={() => setTeamModalOpen(false)}
-        title="Manage Project Team"
-        description="Search, filter, and assign a project manager and employee members."
+        title={isEditingTeam ? "Manage Project Team" : "Project Team Details"}
+        description={isEditingTeam ? "Search, filter, and assign a project manager and employee members." : "Current manager and assigned employee members for this project."}
         footer={
           <Button variant="outline" onClick={() => setTeamModalOpen(false)}>
             Close
           </Button>
         }
       >
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search team..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 text-xs"
-              />
+        {!isEditingTeam ? (
+          <div className="flex flex-col gap-4">
+            {canManage && (
+              <div className="flex justify-end -mt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditingTeam(true)}
+                  className="h-8 px-3 text-xs"
+                >
+                  <Pencil className="size-3.5 mr-1.5" />
+                  Edit Team
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project Manager (Leader)</h3>
+              {manager ? (
+                <div className="flex items-center gap-3 p-2.5 rounded-lg border border-border/50 bg-muted/10">
+                  <Avatar name={manager.name} size="sm" role={manager.role} />
+                  <div>
+                    <div className="text-xs font-semibold text-foreground">{manager.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{manager.email}</div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic p-2.5">No manager assigned yet.</p>
+              )}
             </div>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as any)}
-              className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-xs focus-visible:outline-none"
-            >
-              <option value="all">All Roles</option>
-              <option value="manager">Managers</option>
-              <option value="employee">Employees</option>
-              <option value="members">Current Members</option>
-              <option value="current_employees">Current Employees</option>
-            </select>
-          </div>
 
-          <div className="max-h-[300px] overflow-y-auto border border-border/80 rounded-lg divide-y divide-border">
-            {filteredUsers.length === 0 ? (
-              <p className="p-4 text-center text-xs text-muted-foreground">No matching users found.</p>
-            ) : (
-              filteredUsers.map((u) => {
-                const isCurrentManager = project.managerId === u.id
-                const isCurrentMember = project.memberIds.includes(u.id)
-                
-                return (
-                  <div key={u.id} className="flex items-center justify-between p-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={u.name} size="sm" role={u.role} />
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Assigned Employees ({members.length})</h3>
+              <div className="max-h-[250px] overflow-y-auto border border-border/80 rounded-lg divide-y divide-border bg-card">
+                {members.length === 0 ? (
+                  <p className="p-4 text-center text-xs text-muted-foreground italic">No employees assigned yet.</p>
+                ) : (
+                  members.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 p-2.5">
+                      <Avatar name={m.name} size="sm" role={m.role} />
                       <div>
-                        <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
-                          <span>{u.name}</span>
-                          {renderUserProjectStatus(u.id, u.role)}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">{u.email}</p>
+                        <div className="text-xs font-semibold text-foreground">{m.name}</div>
+                        <div className="text-[10px] text-muted-foreground">{m.email}</div>
                       </div>
                     </div>
-                    <div>
-                      {u.role === "manager" ? (
-                        <Button
-                          size="sm"
-                          variant={isCurrentManager ? "default" : "outline"}
-                          className="h-7 px-3 text-[10px]"
-                          onClick={() => handleAssignManager(u.id)}
-                        >
-                          {isCurrentManager ? "Assigned" : "Assign Leader"}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant={isCurrentMember ? "destructive" : "outline"}
-                          className="h-7 w-7 p-0"
-                          onClick={() => isCurrentMember ? handleRemoveEmployee(u.id) : handleAddEmployee(u.id)}
-                        >
-                          {isCurrentMember ? <Minus className="size-3" /> : <Plus className="size-3" />}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })
-            )}
+                  ))
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search team..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 text-xs"
+                />
+              </div>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as any)}
+                className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-xs focus-visible:outline-none"
+              >
+                <option value="all">All Roles</option>
+                <option value="manager">Managers</option>
+                <option value="employee">Employees</option>
+                <option value="members">Current Members</option>
+                <option value="current_employees">Current Employees</option>
+              </select>
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto border border-border/80 rounded-lg divide-y divide-border">
+              {filteredUsers.length === 0 ? (
+                <p className="p-4 text-center text-xs text-muted-foreground">No matching users found.</p>
+              ) : (
+                filteredUsers.map((u) => {
+                  const isCurrentManager = project.managerId === u.id
+                  const isCurrentMember = project.memberIds.includes(u.id)
+                  
+                  return (
+                    <div key={u.id} className="flex items-center justify-between p-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={u.name} size="sm" role={u.role} />
+                        <div>
+                          <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
+                            <span>{u.name}</span>
+                            {renderUserProjectStatus(u.id, u.role)}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">{u.email}</p>
+                        </div>
+                      </div>
+                      <div>
+                        {u.role === "manager" ? (
+                          <Button
+                            size="sm"
+                            variant={isCurrentManager ? "default" : "outline"}
+                            className="h-7 px-3 text-[10px]"
+                            onClick={() => handleAssignManager(u.id)}
+                          >
+                            {isCurrentManager ? "Assigned" : "Assign Leader"}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant={isCurrentMember ? "destructive" : "outline"}
+                            className="h-7 w-7 p-0"
+                            onClick={() => isCurrentMember ? handleRemoveEmployee(u.id) : handleAddEmployee(u.id)}
+                          >
+                            {isCurrentMember ? <Minus className="size-3" /> : <Plus className="size-3" />}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

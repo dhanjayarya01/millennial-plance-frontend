@@ -1,13 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Trash2, Pencil } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
+import { PriorityBadge, TaskStatusBadge } from "@/components/shared/status-badge"
+import { formatDate } from "@/lib/format"
 import type { Task, TaskPriority, TaskStatus, ProjectStatus } from "@/types"
 import { api, BackendTask, BackendProject, BackendUser } from "@/lib/api"
 
@@ -67,6 +69,7 @@ export function TaskFormModal({ open, onClose, onSave, task, defaultProjectId }:
   const [projects, setProjects] = useState<BackendProject[]>([])
   const [users, setUsers] = useState<BackendUser[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [isEditing, setIsEditing] = useState(true)
 
   const selectedProject = projects.find((p) => String(p.id) === form.projectId)
   const allowedUsers = selectedProject?.assignedEmployees || []
@@ -112,8 +115,10 @@ export function TaskFormModal({ open, onClose, onSave, task, defaultProjectId }:
         assigneeId: task.assigneeId,
         estimatedHours: task.estimatedHours,
       })
+      setIsEditing(false)
     } else {
       setForm(emptyForm)
+      setIsEditing(true)
     }
   }, [task, open])
 
@@ -172,28 +177,100 @@ export function TaskFormModal({ open, onClose, onSave, task, defaultProjectId }:
     <Modal
       open={open}
       onClose={onClose}
-      title={task ? "Edit Task" : "Create Task"}
-      description="Capture the work, priority and ownership."
+      title={task ? (isEditing ? "Edit Task" : "Task Details") : "Create Task"}
+      description={task ? (isEditing ? "Capture the work, priority and ownership." : "View task assignment, priority, status and timeline.") : "Capture the work, priority and ownership."}
       footer={
-        <div className="flex w-full items-center justify-between">
-          {task ? (
-            <Button variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleDelete} type="button" disabled={submitting}>
-              <Trash2 className="size-4 mr-1.5" />
-              Delete
-            </Button>
-          ) : <div />}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} type="button" disabled={submitting}>
-              Cancel
-            </Button>
-            <Button type="submit" form="task-form" disabled={submitting}>
-              {submitting ? "Saving..." : task ? "Save changes" : "Create task"}
+        !isEditing ? (
+          <div className="flex w-full justify-end">
+            <Button variant="outline" onClick={onClose} type="button">
+              Close
             </Button>
           </div>
-        </div>
+        ) : (
+          <div className="flex w-full items-center justify-between">
+            {task ? (
+              <Button variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleDelete} type="button" disabled={submitting}>
+                <Trash2 className="size-4 mr-1.5" />
+                Delete
+              </Button>
+            ) : <div />}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose} type="button" disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" form="task-form" disabled={submitting}>
+                {submitting ? "Saving..." : task ? "Save changes" : "Create task"}
+              </Button>
+            </div>
+          </div>
+        )
       }
     >
-      <form id="task-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {!isEditing && task ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-end -mt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditing(true)}
+              className="h-8 px-3 text-xs"
+            >
+              <Pencil className="size-3.5 mr-1.5" />
+              Edit Task
+            </Button>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Task Name</span>
+            <h3 className="text-base font-semibold text-foreground">{form.name}</h3>
+          </div>
+          
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Description</span>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed bg-muted/30 p-3 rounded-lg border border-border/40">
+              {form.description || "No description provided."}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Priority</span>
+              <div className="mt-0.5">
+                <PriorityBadge priority={form.priority} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Status</span>
+              <div className="mt-0.5">
+                <TaskStatusBadge status={form.status} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Project</span>
+              <span className="text-sm font-medium text-foreground">{projects.find(p => String(p.id) === form.projectId)?.name || "Unknown Project"}</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Assignee</span>
+              <span className="text-sm font-medium text-foreground">{allowedUsers.find(u => String(u.id) === form.assigneeId)?.fullName || "Unassigned"}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Deadline</span>
+              <span className="text-sm text-foreground">{form.deadline ? formatDate(form.deadline) : "No deadline"}</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Estimated Hours</span>
+              <span className="text-sm text-foreground">{form.estimatedHours} hours</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <form id="task-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="t-name">Task name</Label>
           <Input
@@ -296,6 +373,7 @@ export function TaskFormModal({ open, onClose, onSave, task, defaultProjectId }:
           </div>
         </div>
       </form>
+      )}
     </Modal>
   )
 }

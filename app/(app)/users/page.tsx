@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { Search, Users as UsersIcon, Plus, Mail, Trash2, Bell } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { Input } from "@/components/ui/input"
@@ -30,9 +30,32 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
   const [query, setQuery] = useState("")
   const [role, setRole] = useState<Role | "all">("all")
   const [allProjects, setAllProjects] = useState<BackendProject[]>([])
+
+  const [visibleCount, setVisibleCount] = useState(10)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setQuery(searchTerm)
+    }, 450)
+    return () => clearTimeout(handler)
+  }, [searchTerm])
+
+  useEffect(() => {
+    setVisibleCount(10)
+  }, [query, role])
+
+  const handleScroll = () => {
+    const el = containerRef.current
+    if (!el) return
+    if (el.scrollHeight - el.scrollTop <= el.clientHeight + 40) {
+      setVisibleCount((prev) => prev + 10)
+    }
+  }
 
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [sseModalOpen, setSseModalOpen] = useState(false)
@@ -240,7 +263,7 @@ export default function UsersPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or email..." className="pl-9" />
+          <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search by name or email..." className="pl-9" />
         </div>
         <Select value={role} onChange={(e) => setRole(e.target.value as Role | "all")} className="sm:w-44">
           <option value="all">All roles</option>
@@ -259,94 +282,105 @@ export default function UsersPage() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={UsersIcon} title="No users found" description="Try a different search or filter." />
       ) : (
-        <DataTable
-          headers={[
-            { label: "Name" },
-            { label: "Role" },
-            { label: "Department" },
-            { label: "Status" },
-            { label: "Actions", className: "w-24 text-right" },
-          ]}
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="max-h-[600px] overflow-y-auto pr-1"
         >
-          {filtered.map((u) => (
-            <TableRow key={u.id}>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <Avatar name={u.name} role={u.role} />
-                  <div>
-                    <div className="flex items-center gap-1 text-sm font-medium">
-                      <span>{u.name}</span>
-                      {renderUserProjectStatus(u.id, u.role)}
+          <DataTable
+            headers={[
+              { label: "Name" },
+              { label: "Role" },
+              { label: "Department" },
+              { label: "Status" },
+              { label: "Actions", className: "w-24 text-right" },
+            ]}
+          >
+            {filtered.slice(0, visibleCount).map((u) => (
+              <TableRow key={u.id}>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <Avatar name={u.name} role={u.role} />
+                    <div>
+                      <div className="flex items-center gap-1 text-sm font-medium">
+                        <span>{u.name}</span>
+                        {renderUserProjectStatus(u.id, u.role)}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{u.email}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">{u.email}</p>
                   </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                {isAdmin ? (
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
-                    className="h-8 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                  >
-                    <option value="admin">Administrator</option>
-                    <option value="manager">Project Manager</option>
-                    <option value="employee">Employee</option>
-                  </select>
-                ) : (
-                  <Badge variant={u.role === "admin" ? "default" : "neutral"}>{roleLabels[u.role]}</Badge>
-                )}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{u.department}</TableCell>
-              <TableCell>
-                <Badge variant={statusVariant[u.status]} className="capitalize">
-                  {u.status}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center justify-end gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedUser(u)
-                      setEmailSubject("")
-                      setEmailBody("")
-                      setEmailModalOpen(true)
-                    }}
-                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    aria-label={`Email ${u.name}`}
-                  >
-                    <Mail className="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedUser(u)
-                      setSseTitle("")
-                      setSseDesc("")
-                      setSseUrgency("green")
-                      setSseModalOpen(true)
-                    }}
-                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    aria-label={`Notify ${u.name}`}
-                  >
-                    <Bell className="size-4" />
-                  </button>
-                  {(isAdmin || isManager) && (
+                </TableCell>
+                <TableCell>
+                  {isAdmin ? (
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
+                      className="h-8 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="admin">Administrator</option>
+                      <option value="manager">Project Manager</option>
+                      <option value="employee">Employee</option>
+                    </select>
+                  ) : (
+                    <Badge variant={u.role === "admin" ? "default" : "neutral"}>{roleLabels[u.role]}</Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">{u.department}</TableCell>
+                <TableCell>
+                  <Badge variant={statusVariant[u.status]} className="capitalize">
+                    {u.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-end gap-1">
                     <button
                       type="button"
-                      onClick={() => handleDeleteUser(u.id)}
-                      className="flex size-8 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10"
-                      aria-label={`Delete ${u.name}`}
+                      onClick={() => {
+                        setSelectedUser(u)
+                        setEmailSubject("")
+                        setEmailBody("")
+                        setEmailModalOpen(true)
+                      }}
+                      className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label={`Email ${u.name}`}
                     >
-                      <Trash2 className="size-4" />
+                      <Mail className="size-4" />
                     </button>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </DataTable>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUser(u)
+                        setSseTitle("")
+                        setSseDesc("")
+                        setSseUrgency("green")
+                        setSseModalOpen(true)
+                      }}
+                      className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label={`Notify ${u.name}`}
+                    >
+                      <Bell className="size-4" />
+                    </button>
+                    {(isAdmin || isManager) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(u.id)}
+                        className="flex size-8 items-center justify-center rounded-lg text-destructive transition-colors hover:bg-destructive/10"
+                        aria-label={`Delete ${u.name}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
+          {visibleCount < filtered.length && (
+            <div className="flex justify-center py-4">
+              <div className="size-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+            </div>
+          )}
+        </div>
       )}
 
       <Modal

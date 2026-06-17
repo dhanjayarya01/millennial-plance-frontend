@@ -7,19 +7,19 @@ import { Progress } from "@/components/ui/progress"
 import { Avatar } from "@/components/ui/avatar"
 import { ProjectStatusBadge } from "@/components/shared/status-badge"
 import { Dropdown, DropdownItem } from "@/components/ui/dropdown"
-import { getUserById } from "@/data/dummyUsers"
 import { formatDate } from "@/lib/format"
-import type { Project } from "@/types"
+import type { Project, User } from "@/types"
 
 interface ProjectCardProps {
   project: Project
+  users: User[]
   onEdit: (project: Project) => void
   onDelete: (id: string) => void
 }
 
-export function ProjectCard({ project, onEdit, onDelete }: ProjectCardProps) {
-  const manager = getUserById(project.managerId)
-  const members = project.memberIds.map((id) => getUserById(id)).filter(Boolean)
+export function ProjectCard({ project, users, onEdit, onDelete }: ProjectCardProps) {
+  const manager = users.find((u) => u.id === project.managerId)
+  const members = project.memberIds.map((id) => users.find((u) => u.id === id)).filter(Boolean) as User[]
 
   return (
     <Card className="flex flex-col gap-4 p-5 transition-all hover:shadow-md">
@@ -75,10 +75,10 @@ export function ProjectCard({ project, onEdit, onDelete }: ProjectCardProps) {
 
       <div className="flex items-center justify-between border-t border-border pt-4">
         <div className="flex items-center gap-2">
-          <Avatar name={manager?.name ?? "?"} size="sm" />
+          <Avatar name={manager?.name ?? "?"} size="sm" role={manager?.role} title={manager ? `Manager: ${manager.name}` : undefined} />
           <div className="flex -space-x-2">
             {members.slice(0, 3).map((m) => (
-              <Avatar key={m!.id} name={m!.name} size="sm" className="ring-2 ring-card" />
+              <Avatar key={m.id} name={m.name} size="sm" role={m.role} className="ring-2 ring-card" />
             ))}
             {members.length > 3 && (
               <span className="flex size-7 items-center justify-center rounded-full bg-muted text-[0.65rem] font-medium text-muted-foreground ring-2 ring-card">
