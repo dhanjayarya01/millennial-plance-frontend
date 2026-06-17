@@ -6,41 +6,70 @@ import Link from "next/link"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useAuth } from "@/components/providers/auth-provider"
 import { AuthAside } from "@/components/auth/auth-aside"
-import { DemoCredentials } from "@/components/auth/demo-credentials"
 import { Logo } from "@/components/brand/logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function LoginPage() {
-  const { user, loading, login } = useAuth()
+  const { user, loading, login, register } = useAuth()
   const router = useRouter()
 
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [fullName, setFullName] = useState("")
+  const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [role, setRole] = useState("ROLE_EMPLOYEE")
+  
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (!loading && user) router.replace("/dashboard")
   }, [user, loading, router])
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setSuccessMessage(null)
     setSubmitting(true)
-    // Simulate a short network delay for a realistic feel.
-    setTimeout(() => {
-      const result = login(email, password)
-      if (result.ok) {
-        router.replace("/dashboard")
+
+    try {
+      if (isSignUp) {
+        const result = await register({
+          fullName,
+          username,
+          email,
+          password,
+          role,
+        })
+        if (result.ok) {
+          setSuccessMessage("Account created successfully! Admin/Manager verification is required before you can log in.")
+          setIsSignUp(false)
+          // Reset form fields
+          setFullName("")
+          setUsername("")
+          setPassword("")
+        } else {
+          setError(result.error ?? "Registration failed. Please try again.")
+        }
       } else {
-        setError(result.error ?? "Something went wrong.")
-        setSubmitting(false)
+        const result = await login(email, password)
+        if (result.ok) {
+          router.replace("/dashboard")
+        } else {
+          setError(result.error ?? "Invalid email or password.")
+        }
       }
-    }, 500)
+    } catch (err: any) {
+      setError(err.message || "Something went wrong.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -54,13 +83,60 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-6">
-            <h2 className="font-heading text-2xl font-semibold">Welcome back</h2>
+            <h2 className="font-heading text-2xl font-semibold">
+              {isSignUp ? "Create your account" : "Welcome back"}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sign in to your workspace to continue.
+              {isSignUp
+                ? "Join your team space and start tracking projects."
+                : "Sign in to your workspace to continue."}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {isSignUp && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="John Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="johndoe"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="role">Role</Label>
+                  <select
+                    id="role"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    required
+                  >
+                    <option value="ROLE_EMPLOYEE">Employee</option>
+                    <option value="ROLE_PROJECT_MANAGER">Project Manager</option>
+                    <option value="ROLE_ADMIN">Admin</option>
+                  </select>
+                </div>
+              </>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -81,7 +157,7 @@ export default function LoginPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
-                  placeholder="Enter your password"
+                  placeholder={isSignUp ? "At least 8 characters" : "Enter your password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -98,23 +174,25 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground select-none">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="size-4 rounded border-input accent-primary"
-                />
-                Remember me
-              </label>
-              <Link
-                href="/forgot-password"
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
+            {!isSignUp && (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground select-none">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    className="size-4 rounded border-input accent-primary"
+                  />
+                  Remember me
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            )}
 
             {error && (
               <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -122,21 +200,59 @@ export default function LoginPage() {
               </p>
             )}
 
+            {successMessage && (
+              <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+                {successMessage}
+              </p>
+            )}
+
             <Button type="submit" size="lg" className="h-10 w-full" disabled={submitting}>
               {submitting && <Loader2 className="size-4 animate-spin" />}
-              {submitting ? "Signing in..." : "Sign in"}
+              {submitting
+                ? isSignUp
+                  ? "Creating account..."
+                  : "Signing in..."
+                : isSignUp
+                ? "Sign up"
+                : "Sign in"}
             </Button>
           </form>
 
           <div className="my-6 h-px bg-border" />
 
-          <DemoCredentials
-            onPick={(e, p) => {
-              setEmail(e)
-              setPassword(p)
-              setError(null)
-            }}
-          />
+          <div className="text-center text-sm text-muted-foreground">
+            {isSignUp ? (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(false)
+                    setError(null)
+                    setSuccessMessage(null)
+                  }}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Sign in
+                </button>
+              </>
+            ) : (
+              <>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(true)
+                    setError(null)
+                    setSuccessMessage(null)
+                  }}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Sign up
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </main>
