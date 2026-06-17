@@ -114,11 +114,11 @@ export default function UsersPage() {
   }, [])
 
   const renderUserProjectStatus = (uId: string, uRole: string) => {
-    if (uRole !== "employee") return null
+    if (uRole !== "employee" && uRole !== "manager") return null
 
-    const assigned = allProjects.filter((p) =>
-      p.assignedEmployees?.some((e) => String(e.id) === uId)
-    )
+    const assigned = uRole === "employee"
+      ? allProjects.filter((p) => p.assignedEmployees?.some((e) => String(e.id) === uId))
+      : allProjects.filter((p) => p.manager && String(p.manager.id) === uId)
 
     if (assigned.length === 0) {
       return (

@@ -35,6 +35,7 @@ export interface BackendTask {
   projectId: number;
   projectName?: string;
   employee?: BackendUser | null;
+  employees?: BackendUser[] | null;
 }
 
 export interface AuthResponse {
@@ -187,6 +188,7 @@ class ApiService {
     deadline: string;
     estimatedHours?: number;
     employeeId?: number | null;
+    employeeIds?: number[];
   }): Promise<ApiResponse<BackendTask>> {
     return this.request<ApiResponse<BackendTask>>(`/api/projects/${projectId}/tasks`, {
       method: "POST",
@@ -202,6 +204,7 @@ class ApiService {
     deadline: string;
     estimatedHours?: number;
     employeeId?: number | null;
+    employeeIds?: number[];
   }): Promise<ApiResponse<BackendTask>> {
     return this.request<ApiResponse<BackendTask>>(`/api/tasks/${id}`, {
       method: "PUT",

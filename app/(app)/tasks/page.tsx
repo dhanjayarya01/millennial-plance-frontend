@@ -48,6 +48,7 @@ const mapTask = (t: BackendTask): Task => {
     deadline: t.deadline || "",
     projectId: String(t.projectId),
     assigneeId: t.employee ? String(t.employee.id) : "",
+    assigneeIds: t.employees ? t.employees.map(e => String(e.id)) : (t.employee ? [String(t.employee.id)] : []),
     estimatedHours: t.estimatedHours || 0,
   }
 }
@@ -140,6 +141,19 @@ export default function TasksPage() {
     })
   }
 
+  async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
+    const originalTasks = [...tasks]
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    )
+    try {
+      await api.updateTaskStatus(taskId, newStatus)
+    } catch (err: any) {
+      alert("Failed to update task status: " + err.message)
+      setTasks(originalTasks)
+    }
+  }
+
   const title = user?.role === "employee" ? "My Tasks" : user?.role === "manager" ? "Team Tasks" : "Tasks"
 
   return (
@@ -211,7 +225,13 @@ export default function TasksPage() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={ListChecks} title="No tasks found" description="Adjust your filters or create a new task." />
       ) : view === "board" ? (
-        <KanbanBoard tasks={filtered} onSelect={(t) => router.push(`/tasks/${t.id}`)} />
+        <KanbanBoard
+          tasks={filtered}
+          users={users}
+          projects={projects}
+          onSelect={(t) => router.push(`/tasks/${t.id}`)}
+          onStatusChange={handleStatusChange}
+        />
       ) : (
         <DataTable
           headers={[

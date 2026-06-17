@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { PriorityBadge, TaskStatusBadge } from "@/components/shared/status-badge"
 import { formatDate } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import type { Task, TaskPriority, TaskStatus, ProjectStatus } from "@/types"
 import { api, BackendTask, BackendProject, BackendUser } from "@/lib/api"
 

@@ -40,6 +40,7 @@ export interface Task {
   deadline: string
   projectId: string
   assigneeId: string
+  assigneeIds?: string[]
   estimatedHours: number
 }
 

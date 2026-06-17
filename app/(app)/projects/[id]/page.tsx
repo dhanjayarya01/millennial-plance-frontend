@@ -89,6 +89,7 @@ const mapTask = (t: BackendTask): Task => {
     deadline: t.deadline || "",
     projectId: String(t.projectId),
     assigneeId: t.employee ? String(t.employee.id) : "",
+    assigneeIds: t.employees ? t.employees.map(e => String(e.id)) : (t.employee ? [String(t.employee.id)] : []),
     estimatedHours: t.estimatedHours || 0,
   }
 }
@@ -173,6 +174,7 @@ export default function ProjectDetailPage() {
           deadline: draggedTask.deadline,
           estimatedHours: draggedTask.estimatedHours,
           employeeId: draggedTask.assigneeId ? Number(draggedTask.assigneeId) : null,
+          employeeIds: draggedTask.assigneeIds ? draggedTask.assigneeIds.map(Number) : [],
         }
         await api.updateTask(draggedTask.id, payload)
         loadData()
@@ -243,11 +245,11 @@ export default function ProjectDetailPage() {
   }, [teamModalOpen])
 
   const renderUserProjectStatus = (uId: string, uRole: string) => {
-    if (uRole !== "employee") return null
+    if (uRole !== "employee" && uRole !== "manager") return null
 
-    const assigned = allProjects.filter((p) =>
-      p.assignedEmployees?.some((e) => String(e.id) === uId)
-    )
+    const assigned = uRole === "employee"
+      ? allProjects.filter((p) => p.assignedEmployees?.some((e) => String(e.id) === uId))
+      : allProjects.filter((p) => p.manager && String(p.manager.id) === uId)
 
     if (assigned.length === 0) {
       return (

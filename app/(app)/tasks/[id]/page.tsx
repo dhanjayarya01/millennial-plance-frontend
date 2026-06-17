@@ -44,6 +44,7 @@ const mapTask = (t: BackendTask): Task => {
     deadline: t.deadline || "",
     projectId: String(t.projectId),
     assigneeId: t.employee ? String(t.employee.id) : "",
+    assigneeIds: t.employees ? t.employees.map(e => String(e.id)) : (t.employee ? [String(t.employee.id)] : []),
     estimatedHours: t.estimatedHours || 0,
   }
 }
