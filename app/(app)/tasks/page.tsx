@@ -23,6 +23,7 @@ import { api, BackendTask } from "@/lib/api"
 const mapTask = (t: BackendTask): Task => {
   const mapPriority = (p: string): TaskPriority => {
     const pLower = p.toLowerCase()
+    if (pLower === "critical") return "urgent"
     if (pLower === "low" || pLower === "medium" || pLower === "high" || pLower === "urgent") {
       return pLower as TaskPriority
     }
@@ -31,9 +32,10 @@ const mapTask = (t: BackendTask): Task => {
 
   const mapStatus = (s: string): TaskStatus => {
     const sLower = s.toLowerCase().replace("_", "-")
-    if (sLower === "todo" || sLower === "in-progress" || sLower === "review" || sLower === "done") {
-      return sLower as TaskStatus
-    }
+    if (sLower === "todo" || sLower === "to-do") return "todo"
+    if (sLower === "in-progress") return "in-progress"
+    if (sLower === "review" || sLower === "in-review") return "review"
+    if (sLower === "done" || sLower === "completed") return "done"
     return "todo"
   }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { Search, Users as UsersIcon, Plus, Mail, Trash2 } from "lucide-react"
+import { Search, Users as UsersIcon, Plus, Mail, Trash2, Bell } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
@@ -12,8 +12,12 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { DataTable, TableRow, TableCell } from "@/components/tables/data-table"
 import { roleLabels } from "@/constants/navigation"
 import type { Role, User } from "@/types"
-import { api, BackendUser } from "@/lib/api"
+import { api, BackendUser, BackendProject } from "@/lib/api"
 import { useAuth } from "@/components/providers/auth-provider"
+import { Modal } from "@/components/ui/modal"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { notificationService } from "@/lib/notification-service"
 
 const statusVariant = {
   active: "success",
@@ -28,13 +32,34 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [role, setRole] = useState<Role | "all">("all")
+  const [allProjects, setAllProjects] = useState<BackendProject[]>([])
+
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [sseModalOpen, setSseModalOpen] = useState(false)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+
+  const [sseTitle, setSseTitle] = useState("")
+  const [sseDesc, setSseDesc] = useState("")
+  const [sseUrgency, setSseUrgency] = useState<"green" | "yellow" | "red">("green")
+
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailBody, setEmailBody] = useState("")
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    async function fetchUsers() {
+    async function fetchData() {
       try {
-        const res = await api.getUsers()
-        if (res.success && res.data) {
-          const mapped = res.data.map((u: BackendUser) => {
+        const [usersRes, projectsRes] = await Promise.all([
+          api.getUsers(),
+          api.getProjects()
+        ])
+
+        if (projectsRes.success) {
+          setAllProjects(projectsRes.data)
+        }
+
+        if (usersRes.success && usersRes.data) {
+          const mapped = usersRes.data.map((u: BackendUser) => {
             const mapRole = (r: string): Role => {
               if (r === "ROLE_ADMIN") return "admin"
               if (r === "ROLE_PROJECT_MANAGER") return "manager"
@@ -54,7 +79,7 @@ export default function UsersPage() {
           })
           setUsers(mapped)
         } else {
-          setError(res.message || "Failed to load users.")
+          setError(usersRes.message || "Failed to load users.")
         }
       } catch (err: any) {
         setError(err.message || "An error occurred.")
@@ -62,8 +87,50 @@ export default function UsersPage() {
         setLoading(false)
       }
     }
-    fetchUsers()
+    fetchData()
   }, [])
+
+  const renderUserProjectStatus = (uId: string, uRole: string) => {
+    if (uRole !== "employee") return null
+
+    const assigned = allProjects.filter((p) =>
+      p.assignedEmployees?.some((e) => String(e.id) === uId)
+    )
+
+    if (assigned.length === 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-400 border border-rose-500/20 ml-2">
+          Ideal
+        </span>
+      )
+    }
+
+    const p = assigned[0]
+    const rawName = p.name
+    const truncatedName = rawName.length > 15 ? rawName.slice(0, 15) + "..." : rawName
+    const teamSize = (p.assignedEmployees?.length || 0) + (p.manager ? 1 : 0)
+    const managerName = p.manager ? p.manager.fullName : "Unassigned"
+
+    return (
+      <div className="relative group inline-block ml-2 select-none">
+        <span className="cursor-help inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary border border-primary/20">
+          @{truncatedName}
+        </span>
+        <div className="pointer-events-none absolute left-1/2 bottom-full z-50 mb-2 w-56 -translate-x-1/2 scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all origin-bottom rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-lg text-[11px] leading-relaxed">
+          <div className="font-semibold text-foreground border-b border-border/60 pb-1 mb-1">{rawName}</div>
+          <div>
+            <span className="text-muted-foreground">Manager: </span>
+            <span className="text-foreground font-medium">{managerName}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Team Size: </span>
+            <span className="text-foreground font-medium">{teamSize} members</span>
+          </div>
+          <div className="absolute top-full left-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1 bg-popover border-r border-b border-border rotate-45" />
+        </div>
+      </div>
+    )
+  }
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -102,6 +169,55 @@ export default function UsersPage() {
       }
     } catch (err: any) {
       alert(err.message || "Failed to delete user.")
+    }
+  }
+
+  async function handleSendSse(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedUser) return
+    setSubmitting(true)
+    try {
+      await notificationService.sendSseNotification(
+        sseTitle,
+        `[Direct to ${selectedUser.name}]: ${sseDesc}`,
+        sseUrgency
+      )
+      setSseTitle("")
+      setSseDesc("")
+      setSseUrgency("green")
+      setSseModalOpen(false)
+      setSelectedUser(null)
+      alert("SSE notification broadcasted successfully!")
+    } catch (err: any) {
+      alert("Failed to send SSE notification.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleSendEmail(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedUser) return
+    setSubmitting(true)
+    try {
+      const res = await notificationService.sendEmail(
+        selectedUser.email,
+        emailSubject,
+        `<p>Hello ${selectedUser.name},</p><p>${emailBody.replace(/\n/g, "<br/>")}</p>`
+      )
+      if (res.success) {
+        setEmailSubject("")
+        setEmailBody("")
+        setEmailModalOpen(false)
+        setSelectedUser(null)
+        alert(`Email successfully dispatched to ${selectedUser.email}!`)
+      } else {
+        alert("Failed to send email.")
+      }
+    } catch (err: any) {
+      alert("Error sending email.")
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -158,7 +274,10 @@ export default function UsersPage() {
                 <div className="flex items-center gap-3">
                   <Avatar name={u.name} role={u.role} />
                   <div>
-                    <p className="text-sm font-medium">{u.name}</p>
+                    <div className="flex items-center gap-1 text-sm font-medium">
+                      <span>{u.name}</span>
+                      {renderUserProjectStatus(u.id, u.role)}
+                    </div>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
                   </div>
                 </div>
@@ -185,14 +304,34 @@ export default function UsersPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                <div className="flex items-center justify-end gap-2">
-                  <a
-                    href={`mailto:${u.email}`}
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUser(u)
+                      setEmailSubject("")
+                      setEmailBody("")
+                      setEmailModalOpen(true)
+                    }}
                     className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     aria-label={`Email ${u.name}`}
                   >
                     <Mail className="size-4" />
-                  </a>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUser(u)
+                      setSseTitle("")
+                      setSseDesc("")
+                      setSseUrgency("green")
+                      setSseModalOpen(true)
+                    }}
+                    className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label={`Notify ${u.name}`}
+                  >
+                    <Bell className="size-4" />
+                  </button>
                   {(isAdmin || isManager) && (
                     <button
                       type="button"
@@ -209,6 +348,75 @@ export default function UsersPage() {
           ))}
         </DataTable>
       )}
+
+      <Modal
+        open={sseModalOpen}
+        onClose={() => setSseModalOpen(false)}
+        title="Send SSE Notification"
+        description={selectedUser ? `Send a real-time notification to ${selectedUser.name}` : ""}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setSseModalOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendSse} disabled={submitting || !sseTitle || !sseDesc}>
+              {submitting ? "Sending..." : "Send Notification"}
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleSendSse} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sse-title">Title</Label>
+            <Input id="sse-title" value={sseTitle} onChange={(e) => setSseTitle(e.target.value)} placeholder="Notification title..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sse-desc">Description</Label>
+            <Textarea id="sse-desc" value={sseDesc} onChange={(e) => setSseDesc(e.target.value)} placeholder="Message content..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sse-urgency">Urgency Level</Label>
+            <Select id="sse-urgency" value={sseUrgency} onChange={(e) => setSseUrgency(e.target.value as any)}>
+              <option value="green">Green (Low / Info)</option>
+              <option value="yellow">Yellow (Medium / Warning)</option>
+              <option value="red">Red (High / Urgent)</option>
+            </Select>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        title="Compose Email"
+        description={selectedUser ? `Send a direct email to ${selectedUser.name} (${selectedUser.email})` : ""}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEmailModalOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendEmail} disabled={submitting || !emailSubject || !emailBody}>
+              {submitting ? "Sending..." : "Send Email"}
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleSendEmail} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email-to">Recipient</Label>
+            <Input id="email-to" value={selectedUser?.email || ""} disabled />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email-subject">Subject</Label>
+            <Input id="email-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} placeholder="Subject line..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email-body">Body Message</Label>
+            <Textarea id="email-body" value={emailBody} onChange={(e) => setEmailBody(e.target.value)} placeholder="Email content..." required />
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }
+

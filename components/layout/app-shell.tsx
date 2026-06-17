@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Navbar } from "@/components/layout/navbar"
 import { Breadcrumbs } from "@/components/layout/breadcrumbs"
 import { Logo } from "@/components/brand/logo"
+import { NotificationListener } from "@/components/layout/notification-listener"
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -60,6 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+      <NotificationListener />
     </div>
   )
 }

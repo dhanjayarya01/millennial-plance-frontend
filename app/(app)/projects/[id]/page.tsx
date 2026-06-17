@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -29,6 +29,8 @@ import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ProjectStatusBadge, TaskStatusBadge, PriorityBadge } from "@/components/shared/status-badge"
 import { ProjectFormModal } from "@/components/projects/project-form-modal"
+import { TaskFormModal } from "@/components/tasks/task-form-modal"
+import { notificationService } from "@/lib/notification-service"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, Role } from "@/types"
@@ -62,6 +64,7 @@ const mapProject = (p: BackendProject): Project => {
 const mapTask = (t: BackendTask): Task => {
   const mapPriority = (p: string): TaskPriority => {
     const pLower = p.toLowerCase()
+    if (pLower === "critical") return "urgent"
     if (pLower === "low" || pLower === "medium" || pLower === "high" || pLower === "urgent") {
       return pLower as TaskPriority
     }
@@ -70,9 +73,10 @@ const mapTask = (t: BackendTask): Task => {
 
   const mapStatus = (s: string): TaskStatus => {
     const sLower = s.toLowerCase().replace("_", "-")
-    if (sLower === "todo" || sLower === "in-progress" || sLower === "review" || sLower === "done") {
-      return sLower as TaskStatus
-    }
+    if (sLower === "todo" || sLower === "to-do") return "todo"
+    if (sLower === "in-progress") return "in-progress"
+    if (sLower === "review" || sLower === "in-review") return "review"
+    if (sLower === "done" || sLower === "completed") return "done"
     return "todo"
   }
 
@@ -104,56 +108,174 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [teamModalOpen, setTeamModalOpen] = useState(false)
+  const [taskModalOpen, setTaskModalOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const containerRef = useRef<HTMLUListElement>(null)
+  const [allProjects, setAllProjects] = useState<BackendProject[]>([])
   
   const [searchQuery, setSearchQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState<"all" | "manager" | "employee" | "members" | "current_employees">("all")
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [projectRes, tasksRes, usersRes] = await Promise.all([
-          api.getProjectById(params.id),
-          api.getTasks(),
-          api.getUsers(),
-        ])
+  const sortedTasks = useMemo(() => {
+    const priorityWeight = (p: TaskPriority) => {
+      if (p === "urgent") return 4
+      if (p === "high") return 3
+      if (p === "medium") return 2
+      return 1
+    }
+    return [...tasks].sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority))
+  }, [tasks])
 
-        if (projectRes.success && tasksRes.success && usersRes.success) {
-          const mapUserRole = (r: string): Role => {
-            if (r === "ROLE_ADMIN") return "admin"
-            if (r === "ROLE_PROJECT_MANAGER") return "manager"
-            return "employee"
-          }
+  async function handleTaskDrop(draggedIdx: number, targetIdx: number) {
+    if (draggedIdx === targetIdx) return
 
-          const uList = usersRes.data.map((u) => ({
-            id: String(u.id),
-            name: u.fullName,
-            email: u.email,
-            password: "",
-            role: mapUserRole(u.role),
-            avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
-            jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
-            department: "Engineering",
-            status: u.active ? ("active" as const) : ("suspended" as const),
-          }))
+    const reordered = [...sortedTasks]
+    const [draggedTask] = reordered.splice(draggedIdx, 1)
 
-          setUsers(uList)
-          setProject(mapProject(projectRes.data))
-          
-          const filteredTasks = tasksRes.data
-            .filter((t) => String(t.projectId) === params.id)
-            .map(mapTask)
-          setTasks(filteredTasks)
-        } else {
-          setError("Project details not found.")
+    const targetTask = reordered[targetIdx]
+    let newPriority = draggedTask.priority
+
+    if (targetTask) {
+      const priorities: TaskPriority[] = ["low", "medium", "high", "urgent"]
+      const draggedWeight = priorities.indexOf(draggedTask.priority)
+      const targetWeight = priorities.indexOf(targetTask.priority)
+
+      if (targetIdx < draggedIdx) {
+        if (draggedWeight < targetWeight) {
+          newPriority = targetTask.priority
         }
-      } catch (err: any) {
-        setError(err.message || "An error occurred.")
-      } finally {
-        setLoading(false)
+      } else {
+        if (draggedWeight > targetWeight) {
+          newPriority = targetTask.priority
+        }
       }
     }
+
+    reordered.splice(targetIdx, 0, { ...draggedTask, priority: newPriority })
+    setTasks(reordered)
+
+    if (newPriority !== draggedTask.priority) {
+      try {
+        const payload = {
+          name: draggedTask.name,
+          description: draggedTask.description,
+          priority: newPriority === "urgent" ? "CRITICAL" : newPriority.toUpperCase(),
+          status: draggedTask.status === "todo"
+            ? "TO_DO"
+            : draggedTask.status === "in-progress"
+            ? "IN_PROGRESS"
+            : draggedTask.status === "review"
+            ? "IN_REVIEW"
+            : "COMPLETED",
+          deadline: draggedTask.deadline,
+          estimatedHours: draggedTask.estimatedHours,
+          employeeId: draggedTask.assigneeId ? Number(draggedTask.assigneeId) : null,
+        }
+        await api.updateTask(draggedTask.id, payload)
+        loadData()
+      } catch (err: any) {
+        alert("Failed to update task priority: " + err.message)
+        loadData()
+      }
+    }
+  }
+
+  async function loadData() {
+    try {
+      const [projectRes, tasksRes, usersRes, allProjectsRes] = await Promise.all([
+        api.getProjectById(params.id),
+        api.getTasks(),
+        api.getUsers(),
+        api.getProjects(),
+      ])
+
+      if (allProjectsRes.success) {
+        setAllProjects(allProjectsRes.data)
+      }
+
+      if (projectRes.success && tasksRes.success && usersRes.success) {
+        const mapUserRole = (r: string): Role => {
+          if (r === "ROLE_ADMIN") return "admin"
+          if (r === "ROLE_PROJECT_MANAGER") return "manager"
+          return "employee"
+        }
+
+        const uList = usersRes.data.map((u) => ({
+          id: String(u.id),
+          name: u.fullName,
+          email: u.email,
+          password: "",
+          role: mapUserRole(u.role),
+          avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
+          jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
+          department: "Engineering",
+          status: u.active ? ("active" as const) : ("suspended" as const),
+        }))
+
+        setUsers(uList)
+        setProject(mapProject(projectRes.data))
+        
+        const filteredTasks = tasksRes.data
+          .filter((t) => String(t.projectId) === params.id)
+          .map(mapTask)
+        setTasks(filteredTasks)
+      } else {
+        setError("Project details not found.")
+      }
+    } catch (err: any) {
+      setError(err.message || "An error occurred.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     loadData()
   }, [params.id])
+
+  const renderUserProjectStatus = (uId: string, uRole: string) => {
+    if (uRole !== "employee") return null
+
+    const assigned = allProjects.filter((p) =>
+      p.assignedEmployees?.some((e) => String(e.id) === uId)
+    )
+
+    if (assigned.length === 0) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-400 border border-rose-500/20 ml-2">
+          Ideal
+        </span>
+      )
+    }
+
+    const p = assigned[0]
+    const rawName = p.name
+    const truncatedName = rawName.length > 15 ? rawName.slice(0, 15) + "..." : rawName
+    const teamSize = (p.assignedEmployees?.length || 0) + (p.manager ? 1 : 0)
+    const managerName = p.manager ? p.manager.fullName : "Unassigned"
+
+    return (
+      <div className="relative group inline-block ml-2 select-none">
+        <span className="cursor-help inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary border border-primary/20">
+          @{truncatedName}
+        </span>
+        <div className="pointer-events-none absolute left-1/2 bottom-full z-50 mb-2 w-56 -translate-x-1/2 scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all origin-bottom rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-lg text-[11px] leading-relaxed">
+          <div className="font-semibold text-foreground border-b border-border/60 pb-1 mb-1">{rawName}</div>
+          <div>
+            <span className="text-muted-foreground">Manager: </span>
+            <span className="text-foreground font-medium">{managerName}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Team Size: </span>
+            <span className="text-foreground font-medium">{teamSize} members</span>
+          </div>
+          <div className="absolute top-full left-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1 bg-popover border-r border-b border-border rotate-45" />
+        </div>
+      </div>
+    )
+  }
 
   async function handleDeleteProject() {
     if (!project) return
@@ -172,6 +294,19 @@ export default function ProjectDetailPage() {
       const res = await api.assignManager(project.id, managerId)
       if (res.success) {
         setProject(mapProject(res.data))
+        const mgrUser = users.find((u) => u.id === managerId)
+        notificationService.sendSseNotification(
+          "Manager Assigned",
+          `${mgrUser?.name || 'Manager'} has been assigned as the Project Manager for "${project.name}"`,
+          "green"
+        )
+        if (mgrUser?.email) {
+          notificationService.sendEmail(
+            mgrUser.email,
+            `Assigned as Project Manager: ${project.name}`,
+            `<p>Hello ${mgrUser.name},</p><p>You have been assigned as the Project Manager for the project: <strong>${project.name}</strong>.</p>`
+          )
+        }
       }
     } catch (err: any) {
       alert(err.message || "Failed to assign manager.")
@@ -184,6 +319,19 @@ export default function ProjectDetailPage() {
       const res = await api.assignEmployee(project.id, employeeId)
       if (res.success) {
         setProject(mapProject(res.data))
+        const empUser = users.find((u) => u.id === employeeId)
+        notificationService.sendSseNotification(
+          "Member Assigned",
+          `${empUser?.name || 'Employee'} has been assigned to project "${project.name}"`,
+          "green"
+        )
+        if (empUser?.email) {
+          notificationService.sendEmail(
+            empUser.email,
+            `Assigned to Project: ${project.name}`,
+            `<p>Hello ${empUser.name},</p><p>You have been assigned to the project: <strong>${project.name}</strong>.</p>`
+          )
+        }
       }
     } catch (err: any) {
       alert(err.message || "Failed to assign employee.")
@@ -196,10 +344,54 @@ export default function ProjectDetailPage() {
       const res = await api.removeEmployee(project.id, employeeId)
       if (res.success) {
         setProject(mapProject(res.data))
+        const empUser = users.find((u) => u.id === employeeId)
+        notificationService.sendSseNotification(
+          "Member Removed",
+          `${empUser?.name || 'Employee'} has been removed from project "${project.name}"`,
+          "red"
+        )
+        if (empUser?.email) {
+          notificationService.sendEmail(
+            empUser.email,
+            `Removed from Project: ${project.name}`,
+            `<p>Hello ${empUser.name},</p><p>You have been removed from the project: <strong>${project.name}</strong>.</p>`
+          )
+        }
       }
     } catch (err: any) {
       alert(err.message || "Failed to remove employee.")
     }
+  }
+
+  async function handleNotifyAll() {
+    if (!project) return
+    const count = members.length + (manager ? 1 : 0)
+    await notificationService.sendSseNotification(
+      `Project Broadcast: ${project.name}`,
+      `Urgent alert sent to all ${count} team members regarding project status.`,
+      "yellow"
+    )
+    alert(`SSE notification broadcasted to all ${count} team members!`)
+  }
+
+  async function handleEmailAll(e: React.MouseEvent) {
+    e.preventDefault()
+    if (!project) return
+    const emails = [manager?.email, ...members.map((m) => m.email)].filter(Boolean) as string[]
+    if (emails.length === 0) {
+      alert("No team members to email.")
+      return
+    }
+    await Promise.all(
+      emails.map((email) =>
+        notificationService.sendEmail(
+          email,
+          `Broadcast update for project: ${project.name}`,
+          `<p>This is a project-wide email broadcast update regarding: <strong>${project.name}</strong>.</p>`
+        )
+      )
+    )
+    alert(`Emails successfully dispatched to: ${emails.join(", ")}`)
   }
 
   const filteredUsers = useMemo(() => {
@@ -293,13 +485,13 @@ export default function ProjectDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
-          <Card className="flex flex-col gap-4 p-5">
+          <Card className="flex flex-col gap-2.5 p-3.5">
             <div className="flex items-center justify-between">
               <h2 className="font-heading text-sm font-semibold">Progress</h2>
               <span className="text-sm font-medium">{project.completion}%</span>
             </div>
             <Progress value={project.completion} />
-            <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 border-t border-border pt-2.5 sm:grid-cols-4">
               <Stat label="To Do" value={statusCounts.todo} />
               <Stat label="In Progress" value={statusCounts["in-progress"]} />
               <Stat label="Review" value={statusCounts.review} />
@@ -309,47 +501,146 @@ export default function ProjectDetailPage() {
 
           <Card className="flex flex-col gap-1 p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-heading text-sm font-semibold">Tasks</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                {tasks.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading text-sm font-semibold">Tasks</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  {tasks.length}
+                </span>
+              </div>
+              {canManage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedTask(null)
+                    setTaskModalOpen(true)
+                  }}
+                  className="h-7 px-2 text-[11px]"
+                >
+                  <Plus className="size-3 mr-1" />
+                  Add Task
+                </Button>
+              )}
             </div>
-            {tasks.length === 0 ? (
+            {sortedTasks.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">No tasks in this project yet.</p>
             ) : (
-              <ul className="flex flex-col divide-y divide-border">
-                {tasks.map((t) => {
-                  const assignee = users.find((u) => u.id === t.assigneeId)
-                  const overdue = t.status !== "done" && isOverdue(t.deadline)
-                  return (
-                    <li key={t.id}>
-                      <Link
-                        href={`/tasks/${t.id}`}
-                        className="-mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted/50"
+              <ul
+                ref={containerRef}
+                className="flex flex-col gap-3 max-h-[450px] overflow-y-auto pr-1"
+                onDragLeave={() => setDragOverIndex(null)}
+              >
+                {(() => {
+                  let highUrgentCount = 0
+                  return sortedTasks.map((t, index) => {
+                    const assignee = users.find((u) => u.id === t.assigneeId)
+                    const overdue = t.status !== "done" && isOverdue(t.deadline)
+                    
+                    let cardStyle: React.CSSProperties = {}
+                    if (t.priority === "urgent") {
+                      const opacity = Math.max(0.4, 1 - highUrgentCount * 0.12)
+                      cardStyle = {
+                        borderColor: `rgba(239, 68, 68, ${opacity})`,
+                        borderWidth: "1.5px"
+                      }
+                      highUrgentCount++
+                    } else if (t.priority === "high") {
+                      const opacity = Math.max(0.3, 0.7 - highUrgentCount * 0.1)
+                      cardStyle = {
+                        borderColor: `rgba(244, 63, 94, ${opacity})`,
+                        borderWidth: "1.5px"
+                      }
+                      highUrgentCount++
+                    } else if (t.priority === "medium") {
+                      cardStyle = {
+                        borderColor: "rgba(228, 200, 30, 0.6)",
+                        borderWidth: "1.5px"
+                      }
+                    } else {
+                      cardStyle = {}
+                    }
+
+                    return (
+                      <li
+                        key={t.id}
+                        draggable={canManage}
+                        onDragStart={(e) => {
+                          if (canManage) {
+                            setDraggedIndex(index)
+                          }
+                        }}
+                        onDragOver={(e) => {
+                          if (canManage) {
+                            e.preventDefault()
+                            setDragOverIndex(index)
+                            const container = containerRef.current
+                            if (container) {
+                              const rect = container.getBoundingClientRect()
+                              const relativeY = e.clientY - rect.top
+                              if (relativeY < 60) {
+                                container.scrollBy({ top: -10, behavior: "auto" })
+                              } else if (rect.height - relativeY < 60) {
+                                container.scrollBy({ top: 10, behavior: "auto" })
+                              }
+                            }
+                          }
+                        }}
+                        onDrop={(e) => {
+                          if (canManage) {
+                            setDragOverIndex(null)
+                            handleTaskDrop(draggedIndex!, index)
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setDraggedIndex(null)
+                          setDragOverIndex(null)
+                        }}
+                        onClick={(e) => {
+                          if (canManage) {
+                            e.preventDefault()
+                            setSelectedTask(t)
+                            setTaskModalOpen(true)
+                          }
+                        }}
+                        style={cardStyle}
+                        className={cn(
+                          "flex flex-col gap-3 rounded-xl bg-card p-4 transition-all shadow-sm hover:shadow cursor-pointer select-none border border-border",
+                          draggedIndex === index && "opacity-40",
+                          dragOverIndex === index && draggedIndex !== index && "border-dashed border-primary bg-primary/5 scale-[0.98]"
+                        )}
                       >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <Avatar name={assignee?.name ?? "?"} size="sm" role={assignee?.role} />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{t.name}</p>
-                            <span
-                              className={cn(
-                                "flex items-center gap-1 text-xs",
-                                overdue ? "text-destructive" : "text-muted-foreground",
-                              )}
-                            >
-                              <Clock className="size-3" />
-                              {formatDate(t.deadline)}
-                            </span>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-heading text-sm font-semibold tracking-tight text-foreground truncate max-w-[70%]">
+                            {t.name}
+                          </h3>
+                          <div className="flex gap-1 shrink-0">
+                            <PriorityBadge priority={t.priority} />
+                            <TaskStatusBadge status={t.status} />
                           </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <PriorityBadge priority={t.priority} />
-                          <TaskStatusBadge status={t.status} />
+
+                        {t.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-1 truncate">
+                            {t.description}
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-xs">
+                          <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+                            <Avatar name={assignee?.name ?? "?"} size="xs" role={assignee?.role} />
+                            <span className="truncate font-medium text-foreground">
+                              {assignee ? assignee.name : "Unassigned"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground shrink-0">
+                            <Clock className="size-3" />
+                            <span>{formatDate(t.deadline)}</span>
+                          </div>
                         </div>
-                      </Link>
-                    </li>
-                  )
-                })}
+                      </li>
+                    )
+                  })
+                })()}
               </ul>
             )}
           </Card>
@@ -358,7 +649,7 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-6">
           <Card
             className={cn(
-              "flex flex-col gap-4 p-5 transition-all select-none shrink-0 h-[435px]",
+              "flex flex-col gap-4 p-5 transition-all select-none shrink-0",
               isAdmin && "cursor-pointer hover:border-primary/50"
             )}
             onClick={(e) => {
@@ -405,7 +696,7 @@ export default function ProjectDetailPage() {
               )}
             </ul>
 
-            <ul className="flex flex-col gap-3 h-[110px] overflow-hidden shrink-0">
+            <ul className="flex flex-col gap-3 shrink-0">
               {members.slice(0, 2).map((m) => (
                 <li key={m.id} className="flex items-center justify-between p-2">
                   <div className="flex items-center gap-2">
@@ -420,22 +711,25 @@ export default function ProjectDetailPage() {
               ))}
             </ul>
 
-            <div className="team-card-actions mt-auto flex flex-col gap-2 border-t border-border pt-4">
+            <div className="team-card-actions mt-2 flex flex-col gap-2 border-t border-border pt-4">
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full justify-start gap-2 text-xs"
-                onClick={() => alert("Notifying all team members via Slack/Teams...")}
+                onClick={handleNotifyAll}
               >
                 <MessageSquare className="size-3.5 text-primary" />
                 Notify All
               </Button>
-              <a href={emailLink} className="w-full">
-                <Button variant="outline" size="sm" className="w-full justify-start gap-2 text-xs">
-                  <Mail className="size-3.5 text-primary" />
-                  Email All
-                </Button>
-              </a>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start gap-2 text-xs"
+                onClick={handleEmailAll}
+              >
+                <Mail className="size-3.5 text-primary" />
+                Email All
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -466,6 +760,19 @@ export default function ProjectDetailPage() {
         onClose={() => setModalOpen(false)}
         onSave={(p) => setProject(p)}
         project={project}
+      />
+
+      <TaskFormModal
+        open={taskModalOpen}
+        onClose={() => {
+          setTaskModalOpen(false)
+          setSelectedTask(null)
+        }}
+        onSave={() => {
+          loadData()
+        }}
+        task={selectedTask}
+        defaultProjectId={project.id}
       />
 
       <Modal
@@ -516,7 +823,10 @@ export default function ProjectDetailPage() {
                     <div className="flex items-center gap-2.5">
                       <Avatar name={u.name} size="sm" role={u.role} />
                       <div>
-                        <p className="text-xs font-semibold">{u.name}</p>
+                        <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
+                          <span>{u.name}</span>
+                          {renderUserProjectStatus(u.id, u.role)}
+                        </div>
                         <p className="text-[10px] text-muted-foreground">{u.email}</p>
                       </div>
                     </div>
@@ -554,9 +864,9 @@ export default function ProjectDetailPage() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex flex-col">
-      <span className="font-heading text-xl font-semibold">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="flex flex-col gap-0.5">
+      <span className="font-heading text-lg font-semibold leading-none">{value}</span>
+      <span className="text-[11px] text-muted-foreground leading-none">{label}</span>
     </div>
   )
 }
