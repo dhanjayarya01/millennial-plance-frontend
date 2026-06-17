@@ -17,12 +17,14 @@ export function ActivityItem({
   log,
   href,
   className,
+  users = [],
 }: {
   log: ActivityLog
   href?: string
   className?: string
+  users?: User[]
 }) {
-  const user = getUserById(log.userId)
+  const user = users.find((u) => String(u.id) === String(log.userId)) || getUserById(log.userId)
   const accent = log.projectId ? projectColor(log.projectId) : "var(--border)"
   const hasChange = log.oldValue !== "—" || log.newValue !== "—"
 

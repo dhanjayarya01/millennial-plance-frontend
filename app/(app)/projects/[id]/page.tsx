@@ -665,10 +665,10 @@ export default function ProjectDetailPage() {
           <Card
             className={cn(
               "flex flex-col gap-4 p-5 transition-all select-none shrink-0",
-              isAdmin && "cursor-pointer hover:border-primary/50"
+              canManage && "cursor-pointer hover:border-primary/50"
             )}
             onClick={(e) => {
-              if (isAdmin && !(e.target as HTMLElement).closest(".team-card-actions")) {
+              if (canManage && !(e.target as HTMLElement).closest(".team-card-actions")) {
                 setTeamModalOpen(true)
               }
             }}
@@ -681,7 +681,7 @@ export default function ProjectDetailPage() {
                   {members.length + (manager ? 1 : 0)}
                 </span>
               </div>
-              {isAdmin && (
+              {canManage && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -903,6 +903,7 @@ export default function ProjectDetailPage() {
                             variant={isCurrentManager ? "default" : "outline"}
                             className="h-7 px-3 text-[10px]"
                             onClick={() => handleAssignManager(u.id)}
+                            disabled={!isAdmin}
                           >
                             {isCurrentManager ? "Assigned" : "Assign Leader"}
                           </Button>
