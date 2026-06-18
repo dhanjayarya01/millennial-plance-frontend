@@ -98,6 +98,7 @@ export default function UsersPage() {
               jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
               department: "Engineering",
               status: u.active ? ("active" as const) : ("suspended" as const),
+              verified: u.verified,
             }
           })
           setUsers(mapped)
@@ -195,6 +196,20 @@ export default function UsersPage() {
     }
   }
 
+  async function handleVerifyUser(userId: string) {
+    try {
+      const res = await api.verifyUser(userId)
+      if (res.success) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, verified: true } : u))
+        )
+        alert("User successfully verified!")
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to verify user.")
+    }
+  }
+
   async function handleSendSse(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedUser) return
@@ -202,7 +217,7 @@ export default function UsersPage() {
     try {
       await notificationService.sendSseNotification(
         sseTitle,
-        `[Direct to ${selectedUser.name}]: ${sseDesc}`,
+        `From ${currentUser?.name || "Administrator"}: ${sseDesc}`,
         sseUrgency,
         selectedUser.id
       )
@@ -328,9 +343,19 @@ export default function UsersPage() {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{u.department}</TableCell>
                 <TableCell>
-                  <Badge variant={statusVariant[u.status]} className="capitalize">
-                    {u.status}
-                  </Badge>
+                  {!u.verified ? (
+                    <Button
+                      size="sm"
+                      onClick={() => handleVerifyUser(u.id)}
+                      className="h-7 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white border-none"
+                    >
+                      Verify
+                    </Button>
+                  ) : (
+                    <Badge variant={statusVariant[u.status]} className="capitalize">
+                      {u.status}
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">

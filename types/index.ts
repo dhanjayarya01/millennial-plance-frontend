@@ -12,6 +12,7 @@ export interface User {
   jobTitle: string
   department: string
   status: "active" | "invited" | "suspended"
+  verified?: boolean
 }
 
 export type ProjectStatus = "planning" | "in-progress" | "on-hold" | "completed"

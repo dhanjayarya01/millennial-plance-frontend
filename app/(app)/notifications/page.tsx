@@ -2,10 +2,11 @@
 
 import { useAuth } from "@/components/providers/auth-provider"
 import { useEffect, useMemo, useState } from "react"
-import { Bell, AlertTriangle, Clock, AtSign, UserPlus, Info, Check, BellOff } from "lucide-react"
+import { Bell, AlertTriangle, Clock, AtSign, UserPlus, Info, Check, BellOff, Trash2 } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Modal } from "@/components/ui/modal"
 import { EmptyState } from "@/components/shared/empty-state"
 import { timeAgo } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -52,15 +53,17 @@ function mapWorkerNotification(notif: any): AppNotification {
 export default function NotificationsPage() {
   const { user } = useAuth()
   const [items, setItems] = useState<AppNotification[]>([])
+  const [selectedNotif, setSelectedNotif] = useState<AppNotification | null>(null)
   const [filter, setFilter] = useState<(typeof filters)[number]["key"]>("all")
   const unread = items.filter((n) => !n.read).length
 
   useEffect(() => {
     if (!user) return;
+    const userId = user.id;
 
     async function fetchNotifications() {
       try {
-        const res = await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}`)
+        const res = await fetch(`http://localhost:8081/api/worker/notifications/user/${userId}`)
         if (res.ok) {
           const data = await res.json()
           setItems(data.map(mapWorkerNotification))
@@ -72,7 +75,7 @@ export default function NotificationsPage() {
 
     fetchNotifications()
 
-    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${user.id}`)
+    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${userId}`)
 
     const handleNotification = (event: MessageEvent) => {
       try {
@@ -129,6 +132,13 @@ export default function NotificationsPage() {
     }
   }
 
+  async function handleNotifClick(n: AppNotification) {
+    if (!n.read) {
+      await toggleRead(n.id)
+    }
+    setSelectedNotif({ ...n, read: true })
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -173,9 +183,10 @@ export default function NotificationsPage() {
               <Card
                 key={n.id}
                 className={cn(
-                  "flex items-start gap-4 p-4 transition-colors",
+                  "flex items-start gap-4 p-4 transition-colors cursor-pointer hover:bg-muted/30",
                   !n.read && "border-primary/30 bg-primary/[0.03]",
                 )}
+                onClick={() => handleNotifClick(n)}
               >
                 <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", typeColor[n.type])}>
                   <Icon className="size-5" />
@@ -188,18 +199,96 @@ export default function NotificationsPage() {
                   <p className="text-sm text-muted-foreground text-pretty">{n.message}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{timeAgo(n.timestamp)}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => toggleRead(n.id)}
-                  className="shrink-0 text-xs font-medium text-primary hover:underline"
-                >
-                  {n.read ? "Mark unread" : "Mark read"}
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleRead(n.id)
+                    }}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {n.read ? "Mark unread" : "Mark read"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      if (!confirm("Are you sure you want to delete this notification?")) return
+                      try {
+                        const res = await fetch(`http://localhost:8081/api/worker/notifications/${n.id}`, {
+                          method: "DELETE"
+                        })
+                        if (res.ok) {
+                          setItems((prev) => prev.filter((item) => item.id !== n.id))
+                        } else {
+                          alert("Failed to delete notification")
+                        }
+                      } catch (err) {
+                        console.error("Error deleting notification:", err)
+                        alert("Error deleting notification")
+                      }
+                    }}
+                    className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                    title="Delete notification"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
               </Card>
             )
           })}
         </div>
       )}
+
+      <Modal
+        open={!!selectedNotif}
+        onClose={() => setSelectedNotif(null)}
+        title={selectedNotif?.title || "Notification Details"}
+        description={selectedNotif ? `Received ${timeAgo(selectedNotif.timestamp)}` : ""}
+        footer={
+          <div className="flex w-full justify-between items-center">
+            <Button
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={async () => {
+                if (!selectedNotif) return
+                const id = selectedNotif.id
+                try {
+                  const res = await fetch(`http://localhost:8081/api/worker/notifications/${id}`, {
+                    method: "DELETE"
+                  })
+                  if (res.ok) {
+                    setItems((prev) => prev.filter((item) => item.id !== id))
+                    setSelectedNotif(null)
+                  } else {
+                    alert("Failed to delete notification")
+                  }
+                } catch (err) {
+                  console.error("Error deleting notification:", err)
+                  alert("Error deleting notification")
+                }
+              }}
+            >
+              Delete
+            </Button>
+            <Button onClick={() => setSelectedNotif(null)}>
+              Close
+            </Button>
+          </div>
+        }
+      >
+        {selectedNotif && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Message</span>
+              <p className="text-sm text-foreground leading-relaxed bg-muted/30 p-3 rounded-lg border border-border/40 whitespace-pre-wrap">
+                {selectedNotif.message}
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

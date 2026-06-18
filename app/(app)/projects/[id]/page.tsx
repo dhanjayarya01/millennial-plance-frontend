@@ -39,6 +39,8 @@ import { Modal } from "@/components/ui/modal"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 
 const mapProject = (p: BackendProject): Project => {
   const mapStatus = (s: string): ProjectStatus => {
@@ -118,6 +120,20 @@ export default function ProjectDetailPage() {
   const [meetingTime, setMeetingTime] = useState("")
   const [meetLink, setMeetLink] = useState("")
   const [meetingSubmitting, setMeetingSubmitting] = useState(false)
+  const [notifyModalOpen, setNotifyModalOpen] = useState(false)
+  const [notifyTitle, setNotifyTitle] = useState("")
+  const [notifyDesc, setNotifyDesc] = useState("")
+  const [notifyUrgency, setNotifyUrgency] = useState<"green" | "yellow" | "red">("green")
+  const [notifySubmitting, setNotifySubmitting] = useState(false)
+
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailBody, setEmailBody] = useState("")
+  const [emailSubmitting, setEmailSubmitting] = useState(false)
+
+  const [hasReminder, setHasReminder] = useState(true)
+  const [reminderMins, setReminderMins] = useState(1)
+  const [reminderSecs, setReminderSecs] = useState(0)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const containerRef = useRef<HTMLUListElement>(null)
@@ -183,6 +199,19 @@ export default function ProjectDetailPage() {
           employeeIds: draggedTask.assigneeIds ? draggedTask.assigneeIds.map(Number) : [],
         }
         await api.updateTask(draggedTask.id, payload)
+        
+        const projectMembers = [manager, ...members].filter(Boolean) as any[]
+        await Promise.all(
+          projectMembers.map((m) =>
+            notificationService.sendSseNotification(
+              "Task Priority Updated",
+              `Task "${draggedTask.name}" changed to ${newPriority} priority, please check`,
+              "yellow",
+              String(m.id)
+            )
+          )
+        )
+
         loadData()
       } catch (err: any) {
         alert("Failed to update task priority: " + err.message)
@@ -310,16 +339,28 @@ export default function ProjectDetailPage() {
       if (res.success) {
         setProject(mapProject(res.data))
         const mgrUser = users.find((u) => u.id === managerId)
+        const assignerName = user?.name || "Administrator"
+        const assignerRole = user?.role || "admin"
         notificationService.sendSseNotification(
-          "Manager Assigned",
-          `${mgrUser?.name || 'Manager'} has been assigned as the Project Manager for "${project.name}"`,
-          "green"
+          "Project Assigned",
+          `${assignerName} (${assignerRole}), assigned you to ${project.name} project, please check the task section or your email for more detail`,
+          "green",
+          managerId
         )
         if (mgrUser?.email) {
           notificationService.sendEmail(
             mgrUser.email,
             `Assigned as Project Manager: ${project.name}`,
-            `<p>Hello ${mgrUser.name},</p><p>You have been assigned as the Project Manager for the project: <strong>${project.name}</strong>.</p>`
+            `<p>Hello ${mgrUser.name},</p>
+             <p>You have been assigned as the Project Manager for the project <strong>${project.name}</strong> by <strong>${assignerName} (${assignerRole})</strong>.</p>
+             <p><strong>Project Details:</strong></p>
+             <ul>
+               <li><strong>Project Name:</strong> ${project.name}</li>
+               <li><strong>Description:</strong> ${project.description || "No description provided"}</li>
+               <li><strong>Start Date:</strong> ${project.startDate}</li>
+               <li><strong>End Date:</strong> ${project.endDate}</li>
+             </ul>
+             <p>Please check the project section in the app for more details.</p>`
           )
         }
       }
@@ -335,16 +376,28 @@ export default function ProjectDetailPage() {
       if (res.success) {
         setProject(mapProject(res.data))
         const empUser = users.find((u) => u.id === employeeId)
+        const assignerName = user?.name || "Administrator"
+        const assignerRole = user?.role || "admin"
         notificationService.sendSseNotification(
-          "Member Assigned",
-          `${empUser?.name || 'Employee'} has been assigned to project "${project.name}"`,
-          "green"
+          "Project Assigned",
+          `${assignerName} (${assignerRole}), assigned you to ${project.name} project, please check the task section or your email for more detail`,
+          "green",
+          employeeId
         )
         if (empUser?.email) {
           notificationService.sendEmail(
             empUser.email,
             `Assigned to Project: ${project.name}`,
-            `<p>Hello ${empUser.name},</p><p>You have been assigned to the project: <strong>${project.name}</strong>.</p>`
+            `<p>Hello ${empUser.name},</p>
+             <p>You have been assigned to the project <strong>${project.name}</strong> by <strong>${assignerName} (${assignerRole})</strong>.</p>
+             <p><strong>Project Details:</strong></p>
+             <ul>
+               <li><strong>Project Name:</strong> ${project.name}</li>
+               <li><strong>Description:</strong> ${project.description || "No description provided"}</li>
+               <li><strong>Start Date:</strong> ${project.startDate}</li>
+               <li><strong>End Date:</strong> ${project.endDate}</li>
+             </ul>
+             <p>Please check the project section in the app for more details.</p>`
           )
         }
       }
@@ -362,8 +415,9 @@ export default function ProjectDetailPage() {
         const empUser = users.find((u) => u.id === employeeId)
         notificationService.sendSseNotification(
           "Member Removed",
-          `${empUser?.name || 'Employee'} has been removed from project "${project.name}"`,
-          "red"
+          `You have been removed from project "${project.name}"`,
+          "red",
+          employeeId
         )
         if (empUser?.email) {
           notificationService.sendEmail(
@@ -380,22 +434,42 @@ export default function ProjectDetailPage() {
 
   async function handleNotifyAll() {
     if (!project) return
+    setNotifyTitle(`Project Broadcast: ${project.name}`)
+    setNotifyDesc("")
+    setNotifyUrgency("green")
+    setNotifyModalOpen(true)
+  }
+
+  async function handleSendNotifyAll(e: React.FormEvent) {
+    e.preventDefault()
+    if (!project) return
     const recipients = [manager, ...members].filter(Boolean) as any[]
     if (recipients.length === 0) {
       alert("No team members to notify.")
       return
     }
-    await Promise.all(
-      recipients.map((recipient) =>
-        notificationService.sendSseNotification(
-          `Project Broadcast: ${project.name}`,
-          `Urgent alert regarding project status.`,
-          "yellow",
-          String(recipient.id)
+    setNotifySubmitting(true)
+    try {
+      const assignerName = user?.name || "Administrator"
+      const assignerRole = user?.role || "admin"
+      await Promise.all(
+        recipients.map((recipient) =>
+          notificationService.sendSseNotification(
+            notifyTitle,
+            `From ${assignerName} (${assignerRole}): ${notifyDesc}`,
+            notifyUrgency,
+            String(recipient.id)
+          )
         )
       )
-    )
-    alert(`SSE notification broadcasted to all ${recipients.length} team members!`)
+      setNotifyModalOpen(false)
+      alert(`SSE notification broadcasted to all ${recipients.length} team members!`)
+    } catch (err) {
+      console.error(err)
+      alert("Failed to send SSE notification.")
+    } finally {
+      setNotifySubmitting(false)
+    }
   }
 
   async function handleCreateMeeting(e: React.FormEvent) {
@@ -406,6 +480,14 @@ export default function ProjectDetailPage() {
       const recipientIds = [manager?.id, ...members.map((m) => m.id)].filter(Boolean).map(String).join(",")
       const recipientEmails = [manager?.email, ...members.map((m) => m.email)].filter(Boolean).join(",")
       
+      let reminderTimeStr = null
+      if (hasReminder) {
+        const dt = new Date(meetingTime)
+        const offsetMs = (reminderMins * 60 + reminderSecs) * 1000
+        const reminderDt = new Date(dt.getTime() - offsetMs)
+        reminderTimeStr = reminderDt.toISOString()
+      }
+
       const res = await fetch("http://localhost:8081/api/worker/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -415,7 +497,8 @@ export default function ProjectDetailPage() {
           meetingTime: new Date(meetingTime).toISOString(),
           projectId: Number(project.id),
           recipientIds,
-          recipientEmails
+          recipientEmails,
+          reminderTime: reminderTimeStr
         })
       })
 
@@ -438,21 +521,44 @@ export default function ProjectDetailPage() {
   async function handleEmailAll(e: React.MouseEvent) {
     e.preventDefault()
     if (!project) return
-    const emails = [manager?.email, ...members.map((m) => m.email)].filter(Boolean) as string[]
+    setEmailSubject(`Broadcast update for project: ${project.name}`)
+    setEmailBody("")
+    setEmailModalOpen(true)
+  }
+
+  async function handleSendEmailAll(e: React.FormEvent) {
+    e.preventDefault()
+    if (!project) return
+    const recipients = [manager, ...members].filter(Boolean) as any[]
+    const emails = recipients.map((r) => r.email).filter(Boolean) as string[]
     if (emails.length === 0) {
       alert("No team members to email.")
       return
     }
-    await Promise.all(
-      emails.map((email) =>
-        notificationService.sendEmail(
-          email,
-          `Broadcast update for project: ${project.name}`,
-          `<p>This is a project-wide email broadcast update regarding: <strong>${project.name}</strong>.</p>`
+    setEmailSubmitting(true)
+    try {
+      const assignerName = user?.name || "Administrator"
+      const assignerRole = user?.role || "admin"
+      await Promise.all(
+        recipients.map((recipient) =>
+          notificationService.sendEmail(
+            recipient.email,
+            emailSubject,
+            `<p>Hello ${recipient.name},</p>
+             <p>This is a project-wide email broadcast update regarding project <strong>${project.name}</strong> from <strong>${assignerName} (${assignerRole})</strong>.</p>
+             <hr/>
+             <p>${emailBody.replace(/\n/g, "<br/>")}</p>`
+          )
         )
       )
-    )
-    alert(`Emails successfully dispatched to: ${emails.join(", ")}`)
+      setEmailModalOpen(false)
+      alert(`Emails successfully dispatched to all ${emails.length} team members!`)
+    } catch (err) {
+      console.error(err)
+      alert("Failed to send emails.")
+    } finally {
+      setEmailSubmitting(false)
+    }
   }
 
   const filteredUsers = useMemo(() => {
@@ -988,7 +1094,7 @@ export default function ProjectDetailPage() {
         open={meetingModalOpen}
         onClose={() => setMeetingModalOpen(false)}
         title="Schedule Project Meeting"
-        description="Schedule a team alignment meeting. Recipients will receive direct alerts and emails immediately, plus a reminder 1 minute before the meeting start time."
+        description="Schedule a team alignment meeting. Recipients will receive direct alerts and emails immediately, plus a reminder before the meeting start time if configured."
         footer={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setMeetingModalOpen(false)} disabled={meetingSubmitting}>
@@ -1017,6 +1123,120 @@ export default function ProjectDetailPage() {
                 Regen
               </Button>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              id="set-reminder"
+              type="checkbox"
+              checked={hasReminder}
+              onChange={(e) => setHasReminder(e.target.checked)}
+              className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+            />
+            <Label htmlFor="set-reminder" className="text-xs cursor-pointer">Set Reminder Alert</Label>
+          </div>
+
+          {hasReminder && (
+            <div className="flex flex-col gap-1.5 bg-muted/30 p-3 rounded-lg border border-border/40">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Reminder Time Offset</span>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-1 flex-col gap-1">
+                  <Label htmlFor="rem-mins" className="text-[10px] text-muted-foreground">Minutes before</Label>
+                  <Input
+                    id="rem-mins"
+                    type="number"
+                    min={0}
+                    value={reminderMins}
+                    onChange={(e) => setReminderMins(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col gap-1">
+                  <Label htmlFor="rem-secs" className="text-[10px] text-muted-foreground">Seconds before</Label>
+                  <Input
+                    id="rem-secs"
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={reminderSecs}
+                    onChange={(e) => setReminderSecs(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+              {meetingTime && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Reminder will trigger on:{" "}
+                  <span className="font-semibold text-foreground">
+                    {new Date(new Date(meetingTime).getTime() - (reminderMins * 60 + reminderSecs) * 1000).toLocaleString()}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+        </form>
+      </Modal>
+
+      <Modal
+        open={notifyModalOpen}
+        onClose={() => setNotifyModalOpen(false)}
+        title="Broadcast SSE Notification"
+        description="Send a real-time notification to all team members assigned to this project."
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setNotifyModalOpen(false)} disabled={notifySubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendNotifyAll} disabled={notifySubmitting || !notifyTitle || !notifyDesc}>
+              {notifySubmitting ? "Sending..." : "Send Notification"}
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleSendNotifyAll} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="broadcast-title">Notification Title</Label>
+            <Input id="broadcast-title" value={notifyTitle} onChange={(e) => setNotifyTitle(e.target.value)} placeholder="Notification title..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="broadcast-desc">Description</Label>
+            <Textarea id="broadcast-desc" value={notifyDesc} onChange={(e) => setNotifyDesc(e.target.value)} placeholder="Message content..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="broadcast-urgency">Urgency Level</Label>
+            <Select id="broadcast-urgency" value={notifyUrgency} onChange={(e) => setNotifyUrgency(e.target.value as any)}>
+              <option value="green">Green (Low / Info)</option>
+              <option value="yellow">Yellow (Medium / Warning)</option>
+              <option value="red">Red (High / Urgent)</option>
+            </Select>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        title="Compose Broadcast Email"
+        description="Compose an email update to be sent to all team members assigned to this project."
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEmailModalOpen(false)} disabled={emailSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendEmailAll} disabled={emailSubmitting || !emailSubject || !emailBody}>
+              {emailSubmitting ? "Sending..." : "Send Email"}
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleSendEmailAll} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="broadcast-subject">Subject</Label>
+            <Input id="broadcast-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} placeholder="Subject line..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="broadcast-body">Body Message</Label>
+            <Textarea id="broadcast-body" value={emailBody} onChange={(e) => setEmailBody(e.target.value)} placeholder="Email content..." required />
           </div>
         </form>
       </Modal>

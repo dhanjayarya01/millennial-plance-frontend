@@ -232,6 +232,12 @@ class ApiService {
     });
   }
 
+  async verifyUser(id: string): Promise<ApiResponse<BackendUser>> {
+    return this.request<ApiResponse<BackendUser>>(`/api/users/${id}/verify`, {
+      method: "PUT",
+    });
+  }
+
   async deleteUser(id: string): Promise<ApiResponse<string>> {
     return this.request<ApiResponse<string>>(`/api/users/${id}`, {
       method: "DELETE",

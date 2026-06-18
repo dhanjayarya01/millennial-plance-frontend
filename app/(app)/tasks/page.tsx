@@ -19,6 +19,7 @@ import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Task, TaskPriority, TaskStatus, Project, ProjectStatus, User, Role } from "@/types"
 import { api, BackendTask } from "@/lib/api"
+import { notificationService } from "@/lib/notification-service"
 
 const mapTask = (t: BackendTask): Task => {
   const mapPriority = (p: string): TaskPriority => {
@@ -143,11 +144,33 @@ export default function TasksPage() {
 
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     const originalTasks = [...tasks]
+    const taskObj = tasks.find((t) => t.id === taskId)
+    if (!taskObj) return
+
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
     )
     try {
       await api.updateTaskStatus(taskId, newStatus)
+
+      const projectObj = projects.find((p) => p.id === taskObj.projectId)
+      if (projectObj) {
+        const projectMembers = [
+          users.find((u) => u.id === projectObj.managerId),
+          ...projectObj.memberIds.map((mId) => users.find((u) => u.id === mId))
+        ].filter(Boolean) as User[]
+
+        await Promise.all(
+          projectMembers.map((m) =>
+            notificationService.sendSseNotification(
+              "Task Status Updated",
+              `Task "${taskObj.name}" status changed to "${newStatus}", please check`,
+              "yellow",
+              m.id
+            )
+          )
+        )
+      }
     } catch (err: any) {
       alert("Failed to update task status: " + err.message)
       setTasks(originalTasks)
