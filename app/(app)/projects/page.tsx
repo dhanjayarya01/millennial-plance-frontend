@@ -131,8 +131,14 @@ export default function ProjectsPage() {
     })
   }
 
-  function handleDelete(id: string) {
-    setProjects((prev) => prev.filter((p) => p.id !== id))
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete this project?")) return
+    try {
+      await api.deleteProject(id)
+      setProjects((prev) => prev.filter((p) => p.id !== id))
+    } catch (err: any) {
+      alert(err.message || "Failed to delete project.")
+    }
   }
 
   const canManage = user?.role === "admin" || user?.role === "manager"
