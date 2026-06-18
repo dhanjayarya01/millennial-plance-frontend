@@ -40,6 +40,8 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="search"
+          name="globalSearch"
+          aria-label="Search all"
           placeholder="Search projects, tasks, people..."
           className="h-9 w-full rounded-lg border border-input bg-muted/50 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30"
         />
