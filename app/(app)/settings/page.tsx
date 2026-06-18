@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { User as UserIcon, Palette, Lock, Bell, Sun, Moon, Check } from "lucide-react"
+import { User as UserIcon, Palette, Lock, Bell, Sun, Moon, Check, Loader2 } from "lucide-react"
 import { useAuth } from "@/components/providers/auth-provider"
 import { useTheme } from "@/components/providers/theme-provider"
 import { PageHeader } from "@/components/layout/page-header"
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Avatar } from "@/components/ui/avatar"
 import { roleLabels } from "@/constants/navigation"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
 
 const tabs = [
   { key: "profile", label: "Profile", icon: UserIcon },
@@ -30,10 +31,11 @@ const prefs = [
 ]
 
 export default function SettingsPage() {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [tab, setTab] = useState<TabKey>("profile")
   const [saved, setSaved] = useState(false)
+  const [uploadingPic, setUploadingPic] = useState(false)
   const [enabledPrefs, setEnabledPrefs] = useState<Record<string, boolean>>({
     deadlines: true,
     assignments: true,
@@ -42,6 +44,49 @@ export default function SettingsPage() {
   })
 
   if (!user) return null
+
+  async function handleProfilePicUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const currentUser = user
+    if (!currentUser) return
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingPic(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const uploadRes = await fetch("/api/cloudinary/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!uploadRes.ok) {
+        throw new Error("Failed to upload image to Cloudinary")
+      }
+
+      const uploadData = await uploadRes.json()
+      if (uploadData.success && uploadData.url) {
+        const updateRes = await api.updateProfilePicture(uploadData.url)
+        if (updateRes.success) {
+          updateUser({
+            ...currentUser,
+            avatar: uploadData.url,
+          })
+          alert("Profile picture updated successfully!")
+        } else {
+          alert("Failed to update profile picture in database: " + updateRes.message)
+        }
+      } else {
+        alert("Upload failed: " + uploadData.error)
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Error: " + err.message)
+    } finally {
+      setUploadingPic(false)
+    }
+  }
 
   function save() {
     setSaved(true)
@@ -82,7 +127,25 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="flex flex-col gap-5">
                 <div className="flex items-center gap-4">
-                  <Avatar name={user.name} size="lg" role={user.role} />
+                  <div className="relative group cursor-pointer size-12 shrink-0">
+                    <Avatar name={user.name} src={user.avatar} size="lg" role={user.role} />
+                    {uploadingPic ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full">
+                        <Loader2 className="size-4 animate-spin" />
+                      </div>
+                    ) : (
+                      <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-[10px] font-semibold rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                        Change
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/jpg,image/webp"
+                          className="hidden"
+                          onChange={handleProfilePicUpload}
+                          disabled={uploadingPic}
+                        />
+                      </label>
+                    )}
+                  </div>
                   <div>
                     <p className="font-medium">{user.name}</p>
                     <p className="text-sm text-muted-foreground">{roleLabels[user.role]}</p>

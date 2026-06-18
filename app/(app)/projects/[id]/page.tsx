@@ -33,9 +33,10 @@ import { TaskFormModal } from "@/components/tasks/task-form-modal"
 import { notificationService } from "@/lib/notification-service"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, Role } from "@/types"
-import { api, BackendProject, BackendTask } from "@/lib/api"
+import type { Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, Role, WorkLog, WorkLogReply } from "@/types"
+import { api, BackendProject, BackendTask, BackendWorkLog, BackendWorkLogReply } from "@/lib/api"
 import { Modal } from "@/components/ui/modal"
+import { WorkLogCard } from "@/components/work-logs/work-log-card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -97,6 +98,24 @@ const mapTask = (t: BackendTask): Task => {
   }
 }
 
+const mapReply = (r: BackendWorkLogReply): WorkLogReply => ({
+  id: String(r.id),
+  authorId: String(r.authorId),
+  message: r.message,
+  timestamp: r.timestamp,
+})
+
+const mapWorkLog = (w: BackendWorkLog): WorkLog => ({
+  id: String(w.id),
+  authorId: String(w.authorId),
+  taskId: String(w.taskId),
+  message: w.message,
+  hours: w.hours,
+  timestamp: w.timestamp,
+  attachments: w.attachments || [],
+  replies: w.replies ? w.replies.map(mapReply) : [],
+})
+
 function daysBetween(start: string, end: string) {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000))
 }
@@ -138,6 +157,7 @@ export default function ProjectDetailPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const containerRef = useRef<HTMLUListElement>(null)
   const [allProjects, setAllProjects] = useState<BackendProject[]>([])
+  const [projectWorkLogs, setProjectWorkLogs] = useState<WorkLog[]>([])
   
   const [searchQuery, setSearchQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState<"all" | "manager" | "employee" | "members" | "current_employees">("all")
@@ -222,11 +242,12 @@ export default function ProjectDetailPage() {
 
   async function loadData() {
     try {
-      const [projectRes, tasksRes, usersRes, allProjectsRes] = await Promise.all([
+      const [projectRes, tasksRes, usersRes, allProjectsRes, workLogsRes] = await Promise.all([
         api.getProjectById(params.id),
         api.getTasks(),
         api.getUsers(),
         api.getProjects(),
+        api.getWorkLogs(),
       ])
 
       if (allProjectsRes.success) {
@@ -259,6 +280,14 @@ export default function ProjectDetailPage() {
           .filter((t) => String(t.projectId) === params.id)
           .map(mapTask)
         setTasks(filteredTasks)
+
+        const taskIds = new Set(filteredTasks.map((t) => String(t.id)))
+        if (workLogsRes.success && workLogsRes.data) {
+          const mappedLogs = workLogsRes.data
+            .map(mapWorkLog)
+            .filter((log) => taskIds.has(String(log.taskId)))
+          setProjectWorkLogs(mappedLogs)
+        }
       } else {
         setError("Project details not found.")
       }
@@ -329,6 +358,52 @@ export default function ProjectDetailPage() {
       router.push("/projects")
     } catch (err: any) {
       alert(err.message || "Failed to delete project.")
+    }
+  }
+
+  async function handleWorkLogReply(logId: string, reply: WorkLogReply) {
+    try {
+      const res = await api.createWorkLogReply(logId, reply.message)
+      if (res.success && res.data) {
+        setProjectWorkLogs((prev) =>
+          prev.map((log) => {
+            if (log.id === logId) {
+              return {
+                ...log,
+                replies: [...(log.replies || []), mapReply(res.data)],
+              }
+            }
+            return log
+          })
+        )
+
+        // Find work log to identify the task name and members to notify
+        const logItem = projectWorkLogs.find((l) => l.id === logId)
+        const targetTask = tasks.find((t) => t.id === logItem?.taskId)
+        const taskName = targetTask?.name || "Task"
+
+        // Send SSE notification to all project members
+        const projectMembers = [manager, ...members].filter(Boolean) as User[]
+        const senderName = user?.name || "Someone"
+        await Promise.all(
+          projectMembers.map((m) => {
+            if (m.id !== user?.id) {
+              return notificationService.sendSseNotification(
+                "New Work Log Reply",
+                `${senderName} replied to a work log on task "${taskName}": "${reply.message}"`,
+                "green",
+                String(m.id)
+              )
+            }
+            return Promise.resolve()
+          })
+        )
+      } else {
+        alert("Failed to post reply: " + res.message)
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Error posting reply: " + err.message)
     }
   }
 
@@ -800,7 +875,7 @@ export default function ProjectDetailPage() {
 
                         <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-xs">
                           <div className="flex items-center gap-2 text-muted-foreground min-w-0">
-                            <Avatar name={assignee?.name ?? "?"} size="xs" role={assignee?.role} />
+                            <Avatar name={assignee?.name ?? "?"} src={assignee?.avatar} size="sm" role={assignee?.role} />
                             <span className="truncate font-medium text-foreground">
                               {assignee ? assignee.name : "Unassigned"}
                             </span>
@@ -817,6 +892,30 @@ export default function ProjectDetailPage() {
               </ul>
             )}
           </Card>
+
+          {/* Project Work Logs Feed */}
+          <div className="flex flex-col gap-4 mt-6">
+            <h2 className="font-heading text-sm font-semibold">Work Logs & Progress ({projectWorkLogs.length})</h2>
+            <div className="max-h-[600px] overflow-y-auto pr-1 flex flex-col gap-3 scrollbar-thin">
+              {projectWorkLogs.length === 0 ? (
+                <Card className="p-8 text-center text-muted-foreground text-sm">
+                  Work logs will be shown here
+                </Card>
+              ) : (
+                projectWorkLogs.map((log) => (
+                  <WorkLogCard
+                    key={log.id}
+                    log={log}
+                    currentUserId={user?.id || ""}
+                    onReply={handleWorkLogReply}
+                    users={users}
+                    tasks={tasks}
+                    projects={project ? [project] : []}
+                  />
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-col gap-6">
@@ -858,7 +957,7 @@ export default function ProjectDetailPage() {
               {manager && (
                 <li className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-2">
                   <div className="flex items-center gap-2">
-                    <Avatar name={manager.name} size="sm" role={manager.role} />
+                    <Avatar name={manager.name} src={manager.avatar} size="sm" role={manager.role} />
                     <div>
                       <p className="text-sm font-medium">{manager.name}</p>
                       <p className="text-xs text-muted-foreground">Project Manager (Leader)</p>
@@ -873,7 +972,7 @@ export default function ProjectDetailPage() {
               {members.slice(0, 2).map((m) => (
                 <li key={m.id} className="flex items-center justify-between p-2">
                   <div className="flex items-center gap-2">
-                    <Avatar name={m.name} size="sm" role={m.role} />
+                    <Avatar name={m.name} src={m.avatar} size="sm" role={m.role} />
                     <div>
                       <p className="text-sm font-medium">{m.name}</p>
                       <p className="text-xs text-muted-foreground">{m.jobTitle}</p>
@@ -984,7 +1083,7 @@ export default function ProjectDetailPage() {
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project Manager (Leader)</h3>
               {manager ? (
                 <div className="flex items-center gap-3 p-2.5 rounded-lg border border-border/50 bg-muted/10">
-                  <Avatar name={manager.name} size="sm" role={manager.role} />
+                  <Avatar name={manager.name} src={manager.avatar} size="sm" role={manager.role} />
                   <div>
                     <div className="text-xs font-semibold text-foreground">{manager.name}</div>
                     <div className="text-[10px] text-muted-foreground">{manager.email}</div>
@@ -1003,7 +1102,7 @@ export default function ProjectDetailPage() {
                 ) : (
                   members.map((m) => (
                     <div key={m.id} className="flex items-center gap-3 p-2.5">
-                      <Avatar name={m.name} size="sm" role={m.role} />
+                      <Avatar name={m.name} src={m.avatar} size="sm" role={m.role} />
                       <div>
                         <div className="text-xs font-semibold text-foreground">{m.name}</div>
                         <div className="text-[10px] text-muted-foreground">{m.email}</div>
@@ -1050,7 +1149,7 @@ export default function ProjectDetailPage() {
                   return (
                     <div key={u.id} className="flex items-center justify-between p-3">
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={u.name} size="sm" role={u.role} />
+                        <Avatar name={u.name} src={u.avatar} size="sm" role={u.role} />
                         <div>
                           <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
                             <span>{u.name}</span>

@@ -108,6 +108,7 @@ export function ManagerDashboard({ user }: { user: User }) {
       return {
         userId: String(u.id),
         name: u.fullName,
+        avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
         productivity,
       }
     })
@@ -198,7 +199,7 @@ export function ManagerDashboard({ user }: { user: User }) {
           <CardContent className="flex flex-col gap-3">
             {teamPerformance.map((row) => (
               <div key={row.userId} className="flex items-center gap-3">
-                <Avatar name={row.name} size="sm" />
+                <Avatar name={row.name} src={row.avatar} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{row.name}</p>
                   <Progress value={row.productivity} className="mt-1.5" />

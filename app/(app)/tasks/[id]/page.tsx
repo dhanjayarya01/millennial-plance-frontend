@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, CalendarClock, Clock, FolderKanban, Hourglass, ListChecks, Pencil } from "lucide-react"
+import { ArrowLeft, CalendarClock, Clock, FolderKanban, Hourglass, ListChecks, Pencil, Paperclip, Loader2, Plus, Trash2, Check } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Avatar } from "@/components/ui/avatar"
@@ -13,8 +13,10 @@ import { TaskFormModal } from "@/components/tasks/task-form-modal"
 import { useAuth } from "@/components/providers/auth-provider"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Task, TaskPriority, TaskStatus, Project, ProjectStatus, User, Role } from "@/types"
-import { api, BackendTask } from "@/lib/api"
+import type { Task, TaskPriority, TaskStatus, Project, ProjectStatus, User, Role, WorkLog, WorkLogReply } from "@/types"
+import { api, BackendTask, BackendWorkLog, BackendWorkLogReply } from "@/lib/api"
+import { WorkLogCard } from "@/components/work-logs/work-log-card"
+import { notificationService } from "@/lib/notification-service"
 
 const mapTask = (t: BackendTask): Task => {
   const mapPriority = (p: string): TaskPriority => {
@@ -46,8 +48,27 @@ const mapTask = (t: BackendTask): Task => {
     assigneeId: t.employee ? String(t.employee.id) : "",
     assigneeIds: t.employees ? t.employees.map(e => String(e.id)) : (t.employee ? [String(t.employee.id)] : []),
     estimatedHours: t.estimatedHours || 0,
+    createdById: t.createdBy ? String(t.createdBy.id) : "",
   }
 }
+
+const mapReply = (r: BackendWorkLogReply): WorkLogReply => ({
+  id: String(r.id),
+  authorId: String(r.authorId),
+  message: r.message,
+  timestamp: r.timestamp,
+})
+
+const mapWorkLog = (w: BackendWorkLog): WorkLog => ({
+  id: String(w.id),
+  authorId: String(w.authorId),
+  taskId: String(w.taskId),
+  message: w.message,
+  hours: w.hours,
+  timestamp: w.timestamp,
+  attachments: w.attachments || [],
+  replies: w.replies ? w.replies.map(mapReply) : [],
+})
 
 export default function TaskDetailPage() {
   const params = useParams<{ id: string }>()
@@ -56,9 +77,16 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<Task | undefined>(undefined)
   const [project, setProject] = useState<Project | undefined>(undefined)
   const [users, setUsers] = useState<User[]>([])
+  const [workLogs, setWorkLogs] = useState<WorkLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [logMessage, setLogMessage] = useState("")
+  const [logHours, setLogHours] = useState<number>(1)
+  const [logFile, setLogFile] = useState<File | null>(null)
+  const [logFileUrl, setLogFileUrl] = useState("")
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [loggingWork, setLoggingWork] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -68,9 +96,10 @@ export default function TaskDetailPage() {
           const tMapped = mapTask(taskRes.data)
           setTask(tMapped)
 
-          const [projectRes, usersRes] = await Promise.all([
+          const [projectRes, usersRes, logsRes] = await Promise.all([
             api.getProjectById(tMapped.projectId),
             api.getUsers(),
+            api.getWorkLogs(),
           ])
 
           if (projectRes.success) {
@@ -105,6 +134,14 @@ export default function TaskDetailPage() {
                 department: "Engineering",
                 status: u.active ? "active" : "suspended",
               })),
+            )
+          }
+
+          if (logsRes.success && logsRes.data) {
+            setWorkLogs(
+              logsRes.data
+                .map(mapWorkLog)
+                .filter((w) => String(w.taskId) === String(tMapped.id))
             )
           }
         } else {
@@ -142,7 +179,123 @@ export default function TaskDetailPage() {
     )
   }
 
+
+
+
+  const isAssigned = task ? (task.assigneeIds?.includes(user?.id || "") || task.assigneeId === user?.id) : false
+  const canLogWork = user ? (user.role === "admin" || user.role === "manager" || isAssigned) : false
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogFile(file)
+    setUploadingFile(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/cloudinary/upload", {
+        method: "POST",
+        body: formData,
+      })
+      if (!res.ok) throw new Error("Upload failed")
+      const data = await res.json()
+      if (data.success && data.url) {
+        setLogFileUrl(data.url)
+      } else {
+        alert("Upload error: " + data.error)
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Failed to upload attachment: " + err.message)
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
+  async function handleLogWorkSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!task || !logMessage.trim() || logHours <= 0) return
+
+    setLoggingWork(true)
+    try {
+      const payload = {
+        taskId: Number(task.id),
+        message: logMessage.trim(),
+        hours: Number(logHours),
+        attachmentUrl: logFileUrl || undefined,
+      }
+
+      const res = await api.createWorkLog(payload)
+      if (res.success && res.data) {
+        setWorkLogs((prev) => [mapWorkLog(res.data), ...prev])
+        setLogMessage("")
+        setLogHours(1)
+        setLogFile(null)
+        setLogFileUrl("")
+        alert("Work log added successfully!")
+      } else {
+        alert("Failed to add work log: " + res.message)
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Error adding work log: " + err.message)
+    } finally {
+      setLoggingWork(false)
+    }
+  }
+
+  async function handleReply(logId: string, reply: WorkLogReply) {
+    try {
+      const res = await api.createWorkLogReply(logId, reply.message)
+      if (res.success && res.data) {
+        const mappedNewReply = mapReply(res.data)
+        setWorkLogs((prev) =>
+          prev.map((log) => {
+            if (log.id === logId) {
+              return {
+                ...log,
+                replies: [...(log.replies || []), mappedNewReply],
+              }
+            }
+            return log
+          })
+        )
+
+        // Find work log to identify the task name and members to notify
+        const wlObj = workLogs.find(wl => wl.id === logId)
+        const taskName = task?.name || "Task"
+        if (project) {
+          const pmUser = users.find(u => u.id === project.managerId)
+          const membersList = project.memberIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
+          const projectMembers = [pmUser, ...membersList].filter(Boolean) as User[]
+          const senderName = user?.name || "Someone"
+
+          await Promise.all(
+            projectMembers.map((m) => {
+              if (m.id !== user?.id) {
+                return notificationService.sendSseNotification(
+                  "New Work Log Reply",
+                  `${senderName} replied to a work log on task "${taskName}": "${mappedNewReply.message}"`,
+                  "green",
+                  String(m.id)
+                )
+              }
+              return Promise.resolve()
+            })
+          )
+        }
+      } else {
+        alert("Failed to post reply: " + res.message)
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Error posting reply: " + err.message)
+    }
+  }
+
   const assignee = users.find((u) => u.id === task.assigneeId)
+  const assignees = users.filter((u) => task.assigneeIds?.includes(u.id) || u.id === task.assigneeId)
+  const creator = users.find((u) => u.id === task.createdById)
   const overdue = task.status !== "done" && isOverdue(task.deadline)
   const canManage = user?.role === "admin" || user?.role === "manager"
 
@@ -187,30 +340,107 @@ export default function TaskDetailPage() {
               {task.description || "No description provided."}
             </p>
           </Card>
+
+          {/* Work Logs Feed */}
+          <div className="flex flex-col gap-4">
+            <h2 className="font-heading text-sm font-semibold">Work Logs & Progress ({workLogs.length})</h2>
+            <div className="h-[400px] overflow-y-auto pr-1 flex flex-col gap-3 scrollbar-thin">
+              {workLogs.length === 0 ? (
+                <Card className="h-full flex items-center justify-center text-center text-muted-foreground text-sm">
+                  Work logs will be shown here
+                </Card>
+              ) : (
+                workLogs.map((log) => (
+                  <WorkLogCard
+                    key={log.id}
+                    log={log}
+                    currentUserId={user?.id || ""}
+                    onReply={handleReply}
+                    users={users}
+                    tasks={task ? [task] : []}
+                    projects={project ? [project] : []}
+                  />
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-col gap-6">
           <Card className="flex flex-col gap-4 p-5">
-            <h2 className="font-heading text-sm font-semibold">Details</h2>
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Assignee</span>
-              {assignee && (
-                <div className="flex items-center gap-2">
-                  <Avatar name={assignee.name} size="sm" role={assignee.role} />
-                  <div>
-                    <p className="text-sm font-medium">{assignee.name}</p>
-                    <p className="text-xs text-muted-foreground">{assignee.jobTitle}</p>
+            <h2 className="font-heading text-sm font-semibold border-b border-border/50 pb-2">Details & Ownership</h2>
+            
+            {/* Project Details */}
+            {project && (() => {
+              const pm = users.find(u => u.id === project.managerId)
+              return (
+                <div className="flex flex-col gap-1 text-xs">
+                  <span className="font-medium text-muted-foreground">Project</span>
+                  <Link
+                    href={`/projects/${project.id}`}
+                    className="font-medium text-primary hover:underline flex items-center gap-1 text-sm mt-0.5"
+                  >
+                    <FolderKanban className="size-4" />
+                    {project.name}
+                  </Link>
+                  <div className="mt-1 text-muted-foreground">
+                    Timeline: {formatDate(project.startDate)} - {formatDate(project.endDate)}
                   </div>
+                  {pm && (
+                    <div className="mt-1 text-muted-foreground">
+                      Manager: <span className="font-medium text-foreground">@{pm.name}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Created By */}
+            <div className="flex flex-col gap-1 text-xs border-t border-border/50 pt-3">
+              <span className="font-medium text-muted-foreground">Created By</span>
+              {creator ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <Avatar name={creator.name} src={creator.avatar} size="sm" role={creator.role} />
+                  <div>
+                    <p className="text-sm font-medium leading-tight">{creator.name}</p>
+                    <p className="text-xs text-muted-foreground leading-none mt-0.5">{creator.jobTitle}</p>
+                  </div>
+                </div>
+              ) : (
+                <span className="text-sm font-medium text-muted-foreground">System</span>
+              )}
+            </div>
+
+            {/* Assignees List */}
+            <div className="flex flex-col gap-1 text-xs border-t border-border/50 pt-3">
+              <span className="font-medium text-muted-foreground">Assigned Team Members ({assignees.length})</span>
+              {assignees.length === 0 ? (
+                <p className="text-sm text-muted-foreground mt-1">Unassigned</p>
+              ) : (
+                <div className="flex flex-col gap-2.5 mt-1.5">
+                  {assignees.map((emp) => (
+                    <div key={emp.id} className="flex items-center gap-2">
+                      <Avatar name={emp.name} src={emp.avatar} size="sm" role={emp.role} />
+                      <div>
+                        <p className="text-sm font-medium leading-tight">{emp.name}</p>
+                        <p className="text-xs text-muted-foreground leading-none mt-0.5">{emp.jobTitle}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-            <InfoRow
-              icon={CalendarClock}
-              label="Deadline"
-              value={formatDate(task.deadline)}
-              valueClassName={overdue ? "text-destructive" : undefined}
-            />
-            <InfoRow icon={Hourglass} label="Estimated" value={`${task.estimatedHours}h`} />
+
+            {/* Timeline & Estimates */}
+            <div className="flex flex-col gap-2 border-t border-border/50 pt-3 mt-1">
+              <InfoRow
+                icon={CalendarClock}
+                label="Deadline"
+                value={formatDate(task.deadline)}
+                valueClassName={overdue ? "text-destructive font-semibold animate-pulse" : undefined}
+              />
+              <InfoRow icon={Hourglass} label="Estimated Effort" value={`${task.estimatedHours}h`} />
+            </div>
           </Card>
         </div>
       </div>
@@ -218,7 +448,7 @@ export default function TaskDetailPage() {
       <TaskFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSave={(t) => setTask(t)}
+        onSave={(t) => setTask(t || undefined)}
         task={task}
       />
     </div>

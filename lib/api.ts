@@ -36,6 +36,7 @@ export interface BackendTask {
   projectName?: string;
   employee?: BackendUser | null;
   employees?: BackendUser[] | null;
+  createdBy?: BackendUser | null;
 }
 
 export interface AuthResponse {
@@ -241,6 +242,13 @@ class ApiService {
   async deleteUser(id: string): Promise<ApiResponse<string>> {
     return this.request<ApiResponse<string>>(`/api/users/${id}`, {
       method: "DELETE",
+    });
+  }
+
+  async updateProfilePicture(profilePictureUrl: string): Promise<ApiResponse<BackendUser>> {
+    return this.request<ApiResponse<BackendUser>>("/api/users/profile-picture", {
+      method: "PUT",
+      body: JSON.stringify({ profilePictureUrl }),
     });
   }
 

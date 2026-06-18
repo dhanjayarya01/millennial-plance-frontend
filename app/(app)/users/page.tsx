@@ -316,7 +316,7 @@ export default function UsersPage() {
               <TableRow key={u.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <Avatar name={u.name} role={u.role} />
+                    <Avatar name={u.name} src={u.avatar} role={u.role} />
                     <div>
                       <div className="flex items-center gap-1 text-sm font-medium">
                         <span>{u.name}</span>

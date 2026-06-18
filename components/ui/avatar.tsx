@@ -6,6 +6,7 @@ import type { Role } from "@/types"
 
 interface AvatarProps extends React.ComponentProps<"div"> {
   name: string
+  src?: string | null
   size?: "sm" | "md" | "lg"
   // When provided, draws a ring around the avatar in the role's color so a
   // person's role is recognizable anywhere it appears.
@@ -19,7 +20,7 @@ const sizeMap = {
 }
 
 // Avatars render colored initials; the design avoids external avatar images.
-function Avatar({ name, size = "md", role, className, style, ...props }: AvatarProps) {
+function Avatar({ name, src, size = "md", role, className, style, ...props }: AvatarProps) {
   const ringStyle = role
     ? { boxShadow: `0 0 0 2px var(--card), 0 0 0 3.5px ${roleColor(role)}` }
     : undefined
@@ -28,14 +29,18 @@ function Avatar({ name, size = "md", role, className, style, ...props }: AvatarP
     <div
       aria-hidden
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-primary/12 font-semibold text-primary select-none",
+        "flex shrink-0 items-center justify-center rounded-full bg-primary/12 font-semibold text-primary select-none overflow-hidden",
         sizeMap[size],
         className,
       )}
       style={{ ...ringStyle, ...style }}
       {...props}
     >
-      {initials(name)}
+      {src ? (
+        <img src={src} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        initials(name)
+      )}
     </div>
   )
 }

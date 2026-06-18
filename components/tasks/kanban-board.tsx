@@ -52,7 +52,7 @@ function TaskCard({
             <Clock className="size-3.5" />
             {formatDate(task.deadline)}
           </span>
-          <Avatar name={assignee?.name ?? "?"} size="sm" role={assignee?.role} />
+          <Avatar name={assignee?.name ?? "?"} src={assignee?.avatar} size="sm" role={assignee?.role} />
         </div>
       </Card>
     </div>

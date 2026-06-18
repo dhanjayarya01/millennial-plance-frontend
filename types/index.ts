@@ -43,6 +43,7 @@ export interface Task {
   assigneeId: string
   assigneeIds?: string[]
   estimatedHours: number
+  createdById?: string
 }
 
 export interface WorkLogReply {

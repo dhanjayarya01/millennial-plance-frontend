@@ -75,10 +75,10 @@ export function ProjectCard({ project, users, onEdit, onDelete }: ProjectCardPro
 
       <div className="flex items-center justify-between border-t border-border pt-4">
         <div className="flex items-center gap-2">
-          <Avatar name={manager?.name ?? "?"} size="sm" role={manager?.role} title={manager ? `Manager: ${manager.name}` : undefined} />
+          <Avatar name={manager?.name ?? "?"} src={manager?.avatar} size="sm" role={manager?.role} title={manager ? `Manager: ${manager.name}` : undefined} />
           <div className="flex -space-x-2">
             {members.slice(0, 3).map((m) => (
-              <Avatar key={m.id} name={m.name} size="sm" role={m.role} className="ring-2 ring-card" />
+              <Avatar key={m.id} name={m.name} src={m.avatar} size="sm" role={m.role} className="ring-2 ring-card" />
             ))}
             {members.length > 3 && (
               <span className="flex size-7 items-center justify-center rounded-full bg-muted text-[0.65rem] font-medium text-muted-foreground ring-2 ring-card">

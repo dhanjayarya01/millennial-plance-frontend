@@ -25,6 +25,9 @@ export default function WorkLogsPage() {
   const [hours, setHours] = useState(1)
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(true)
+  const [logFile, setLogFile] = useState<File | null>(null)
+  const [logFileUrl, setLogFileUrl] = useState("")
+  const [uploadingFile, setUploadingFile] = useState(false)
 
   const mapPriority = (p: string): TaskPriority => {
     const pLower = p.toLowerCase()
@@ -165,19 +168,49 @@ export default function WorkLogsPage() {
     }
   }
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogFile(file)
+    setUploadingFile(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/cloudinary/upload", {
+        method: "POST",
+        body: formData,
+      })
+      if (!res.ok) throw new Error("Upload failed")
+      const data = await res.json()
+      if (data.success && data.url) {
+        setLogFileUrl(data.url)
+      } else {
+        alert("Upload error: " + data.error)
+      }
+    } catch (err: any) {
+      console.error(err)
+      alert("Failed to upload attachment: " + err.message)
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
   async function addLog(e: React.FormEvent) {
     e.preventDefault()
-    if (!message.trim()) return
+    if (!message.trim() || uploadingFile) return
     try {
       const res = await api.createWorkLog({
         taskId: Number(taskId),
         message: message.trim(),
         hours: Number(hours),
+        attachmentUrl: logFileUrl || undefined,
       })
       if (res.success) {
         setLogs((prev) => [mapWorkLog(res.data), ...prev])
         setMessage("")
         setHours(1)
+        setLogFile(null)
+        setLogFileUrl("")
       }
     } catch (err: any) {
       alert("Failed to create log: " + err.message)
@@ -223,12 +256,27 @@ export default function WorkLogsPage() {
             />
           </div>
           <div className="flex items-center justify-between">
-            <Button type="button" variant="outline" size="sm">
-              <Paperclip className="size-3.5" />
-              Attach file
-            </Button>
-            <Button type="submit" disabled={!message.trim()}>
-              <Send className="size-4" />
+            <div className="flex items-center gap-2">
+              <label className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted cursor-pointer transition-colors select-none">
+                <Paperclip className="size-4 text-muted-foreground" />
+                <span>{logFile ? logFile.name : "Attach file"}</span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={handleFileChange}
+                  disabled={uploadingFile}
+                />
+              </label>
+              {uploadingFile && <div className="size-4 animate-spin rounded-full border-2 border-muted border-t-primary" />}
+              {logFileUrl && (
+                <span className="text-xs text-[var(--success)] font-medium flex items-center gap-1">
+                  ✓ Uploaded
+                </span>
+              )}
+            </div>
+            <Button type="submit" disabled={!message.trim() || uploadingFile}>
+              <Send className="size-4 mr-1.5" />
               Post update
             </Button>
           </div>

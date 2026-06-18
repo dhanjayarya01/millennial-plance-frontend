@@ -47,7 +47,7 @@ export function WorkLogCard({
   return (
     <Card className="p-5">
       <div className="flex gap-3">
-        <Avatar name={author?.name ?? "?"} />
+        <Avatar name={author?.name ?? "?"} src={author?.avatar} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-sm font-medium">{author?.name}</span>
@@ -67,15 +67,28 @@ export function WorkLogCard({
 
           {log.attachments && log.attachments.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {log.attachments.map((file) => (
-                <span
-                  key={file}
-                  className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs"
-                >
-                  <Paperclip className="size-3.5 text-muted-foreground" />
-                  {file}
-                </span>
-              ))}
+              {log.attachments.map((file) => {
+                const isImage = file.match(/\.(jpeg|jpg|gif|png|webp)/i) || file.includes("image/upload");
+                return (
+                  <a
+                    key={file}
+                    href={file}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-2 text-xs hover:bg-muted/70 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Paperclip className="size-3.5 text-muted-foreground" />
+                      <span className="truncate max-w-[200px] text-primary hover:underline">
+                        {file.substring(file.lastIndexOf("/") + 1) || "Attachment"}
+                      </span>
+                    </div>
+                    {isImage && (
+                      <img src={file} alt="attachment" className="mt-1 max-h-24 rounded object-cover" />
+                    )}
+                  </a>
+                )
+              })}
             </div>
           )}
 
@@ -85,7 +98,7 @@ export function WorkLogCard({
                 const replyAuthor = users.find((u) => String(u.id) === String(reply.authorId)) || getUserById(reply.authorId)
                 return (
                   <li key={reply.id} className="flex gap-2.5">
-                    <Avatar name={replyAuthor?.name ?? "?"} size="sm" />
+                    <Avatar name={replyAuthor?.name ?? "?"} src={replyAuthor?.avatar} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{replyAuthor?.name}</span>

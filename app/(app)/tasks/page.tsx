@@ -135,7 +135,8 @@ export default function TasksPage() {
     })
   }, [scoped, query, priority])
 
-  function handleSave(task: Task) {
+  function handleSave(task: Task | null) {
+    if (!task) return
     setTasks((prev) => {
       const exists = prev.some((t) => t.id === task.id)
       return exists ? prev.map((t) => (t.id === task.id ? task : t)) : [task, ...prev]
@@ -283,7 +284,7 @@ export default function TasksPage() {
                 <TableCell className="text-muted-foreground">{project?.name || "Unknown Project"}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Avatar name={assignee?.name ?? "?"} size="sm" role={assignee?.role} />
+                    <Avatar name={assignee?.name ?? "?"} src={assignee?.avatar} size="sm" role={assignee?.role} />
                     <span className="hidden text-sm sm:inline">{assignee?.name}</span>
                   </div>
                 </TableCell>

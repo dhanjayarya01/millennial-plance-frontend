@@ -1,5 +1,5 @@
 import Link from "next/link"
-import type { ActivityLog } from "@/types"
+import type { ActivityLog, User } from "@/types"
 import { getUserById } from "@/data/dummyUsers"
 import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -18,11 +18,13 @@ export function ActivityItem({
   href,
   className,
   users = [],
+  onClick,
 }: {
   log: ActivityLog
   href?: string
   className?: string
   users?: User[]
+  onClick?: (log: ActivityLog) => void
 }) {
   const user = users.find((u) => String(u.id) === String(log.userId)) || getUserById(log.userId)
   const accent = log.projectId ? projectColor(log.projectId) : "var(--border)"
@@ -30,7 +32,7 @@ export function ActivityItem({
 
   const content = (
     <>
-      <Avatar name={user?.name ?? "?"} size="sm" role={user?.role} />
+      <Avatar name={user?.name ?? "?"} src={user?.avatar} size="sm" role={user?.role} />
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-snug text-pretty">
           <span className="font-medium">{user?.name ?? "Unknown"}</span>{" "}
@@ -57,8 +59,8 @@ export function ActivityItem({
   )
 
   const baseClass = cn(
-    "flex items-start gap-3 rounded-lg border border-l-4 border-border bg-card p-3 transition-colors",
-    href && "hover:bg-muted/50",
+    "flex items-start text-left w-full gap-3 rounded-lg border border-l-4 border-border bg-card p-3 transition-colors",
+    (href || onClick) && "hover:bg-muted/50 cursor-pointer select-none",
     className,
   )
 
@@ -68,6 +70,16 @@ export function ActivityItem({
         <Link href={href} className={baseClass} style={{ borderLeftColor: accent }}>
           {content}
         </Link>
+      </li>
+    )
+  }
+
+  if (onClick) {
+    return (
+      <li>
+        <button type="button" onClick={() => onClick(log)} className={baseClass} style={{ borderLeftColor: accent }}>
+          {content}
+        </button>
       </li>
     )
   }

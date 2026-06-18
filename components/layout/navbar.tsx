@@ -61,7 +61,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           className="ml-1"
           trigger={
             <span className="flex items-center gap-2 rounded-lg p-1 pr-2 transition-colors hover:bg-muted">
-              <Avatar name={user.name} size="sm" />
+              <Avatar name={user.name} src={user.avatar} size="sm" />
               <span className="hidden text-left md:block">
                 <span className="block text-sm font-medium leading-tight">{user.name}</span>
                 <span className="block text-xs text-muted-foreground">{roleLabels[user.role]}</span>
