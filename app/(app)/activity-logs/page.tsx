@@ -18,7 +18,6 @@ import { TaskStatusBadge, PriorityBadge, ProjectStatusBadge } from "@/components
 import { useAuth } from "@/components/providers/auth-provider"
 import { roleLegend, projectColor } from "@/lib/colors"
 import { timeAgo, formatDate } from "@/lib/format"
-import { notificationService } from "@/lib/notification-service"
 import type { ActivityLog, User, Project, ProjectStatus, WorkLog, WorkLogReply, Task } from "@/types"
 import { api, BackendAuditLog, BackendTask, BackendWorkLog, BackendWorkLogReply } from "@/lib/api"
 
@@ -248,33 +247,6 @@ export default function ActivityLogsPage() {
           })
         )
         setReplyText("")
-
-        const wlObj = workLogs.find(wl => wl.id === workLogId)
-        const logTask = wlObj ? tasks.find(t => String(t.id) === String(wlObj.taskId)) : null
-        const taskName = logTask?.name || "Task"
-        const matchedProj = logTask ? projects.find(p => String(p.id) === String(logTask.projectId)) : null
-
-        if (matchedProj) {
-          const pmUser = users.find(u => u.id === matchedProj.managerId)
-          const membersList = matchedProj.memberIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
-          const projectMembers = [pmUser, ...membersList].filter(Boolean) as User[]
-          const senderName = user?.name || "Someone"
-
-          await Promise.all(
-            projectMembers.map((m) => {
-              const currentLoggedUser = users.find(u => u.email === user?.email || u.id === user?.id)
-              if (m.id !== currentLoggedUser?.id) {
-                return notificationService.sendSseNotification(
-                  "New Work Log Reply",
-                  `${senderName} replied to a work log on task "${taskName}": "${newReply.message}"`,
-                  "green",
-                  String(m.id)
-                )
-              }
-              return Promise.resolve()
-            })
-          )
-        }
       } else {
         alert("Failed to submit reply: " + res.message)
       }

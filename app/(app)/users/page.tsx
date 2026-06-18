@@ -17,7 +17,6 @@ import { useAuth } from "@/components/providers/auth-provider"
 import { Modal } from "@/components/ui/modal"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { notificationService } from "@/lib/notification-service"
 
 const statusVariant = {
   active: "success",
@@ -215,12 +214,11 @@ export default function UsersPage() {
     if (!selectedUser) return
     setSubmitting(true)
     try {
-      await notificationService.sendSseNotification(
-        sseTitle,
-        `From ${currentUser?.name || "Administrator"}: ${sseDesc}`,
-        sseUrgency,
-        selectedUser.id
-      )
+      await api.sendCustomSse(selectedUser.id, {
+        title: sseTitle,
+        description: `From ${currentUser?.name || "Administrator"}: ${sseDesc}`,
+        urgency: sseUrgency
+      })
       setSseTitle("")
       setSseDesc("")
       setSseUrgency("green")
@@ -239,11 +237,10 @@ export default function UsersPage() {
     if (!selectedUser) return
     setSubmitting(true)
     try {
-      const res = await notificationService.sendEmail(
-        selectedUser.email,
-        emailSubject,
-        `<p>Hello ${selectedUser.name},</p><p>${emailBody.replace(/\n/g, "<br/>")}</p>`
-      )
+      const res = await api.sendCustomEmail(selectedUser.id, {
+        subject: emailSubject,
+        body: emailBody
+      })
       if (res.success) {
         setEmailSubject("")
         setEmailBody("")

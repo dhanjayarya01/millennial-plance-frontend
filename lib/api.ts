@@ -239,6 +239,43 @@ class ApiService {
     });
   }
 
+  async sendCustomSse(userId: string, data: { title: string; description: string; urgency: string }): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/users/${userId}/notify`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sendCustomEmail(userId: string, data: { subject: string; body: string }): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/users/${userId}/email`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async notifyAll(projectId: string, data: { title: string; description: string; urgency: string }): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/projects/${projectId}/notify-all`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async emailAll(projectId: string, data: { subject: string; body: string }): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>(`/api/projects/${projectId}/email-all`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadFile(file: File): Promise<{ success: boolean; url?: string; name?: string; error?: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    return this.request<{ success: boolean; url?: string; name?: string; error?: string }>("/api/cloudinary/upload", {
+      method: "POST",
+      body: formData,
+    });
+  }
+
   async deleteUser(id: string): Promise<ApiResponse<string>> {
     return this.request<ApiResponse<string>>(`/api/users/${id}`, {
       method: "DELETE",

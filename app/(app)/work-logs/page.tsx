@@ -174,18 +174,11 @@ export default function WorkLogsPage() {
     setLogFile(file)
     setUploadingFile(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await fetch("/api/cloudinary/upload", {
-        method: "POST",
-        body: formData,
-      })
-      if (!res.ok) throw new Error("Upload failed")
-      const data = await res.json()
+      const data = await api.uploadFile(file)
       if (data.success && data.url) {
         setLogFileUrl(data.url)
       } else {
-        alert("Upload error: " + data.error)
+        alert("Upload error: " + (data.error || "Unknown error"))
       }
     } catch (err: any) {
       console.error(err)

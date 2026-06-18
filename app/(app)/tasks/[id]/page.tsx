@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils"
 import type { Task, TaskPriority, TaskStatus, Project, ProjectStatus, User, Role, WorkLog, WorkLogReply } from "@/types"
 import { api, BackendTask, BackendWorkLog, BackendWorkLogReply } from "@/lib/api"
 import { WorkLogCard } from "@/components/work-logs/work-log-card"
-import { notificationService } from "@/lib/notification-service"
 
 const mapTask = (t: BackendTask): Task => {
   const mapPriority = (p: string): TaskPriority => {
@@ -191,18 +190,11 @@ export default function TaskDetailPage() {
     setLogFile(file)
     setUploadingFile(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await fetch("/api/cloudinary/upload", {
-        method: "POST",
-        body: formData,
-      })
-      if (!res.ok) throw new Error("Upload failed")
-      const data = await res.json()
+      const data = await api.uploadFile(file)
       if (data.success && data.url) {
         setLogFileUrl(data.url)
       } else {
-        alert("Upload error: " + data.error)
+        alert("Upload error: " + (data.error || "Unknown error"))
       }
     } catch (err: any) {
       console.error(err)
@@ -260,30 +252,6 @@ export default function TaskDetailPage() {
             return log
           })
         )
-
-        // Find work log to identify the task name and members to notify
-        const wlObj = workLogs.find(wl => wl.id === logId)
-        const taskName = task?.name || "Task"
-        if (project) {
-          const pmUser = users.find(u => u.id === project.managerId)
-          const membersList = project.memberIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
-          const projectMembers = [pmUser, ...membersList].filter(Boolean) as User[]
-          const senderName = user?.name || "Someone"
-
-          await Promise.all(
-            projectMembers.map((m) => {
-              if (m.id !== user?.id) {
-                return notificationService.sendSseNotification(
-                  "New Work Log Reply",
-                  `${senderName} replied to a work log on task "${taskName}": "${mappedNewReply.message}"`,
-                  "green",
-                  String(m.id)
-                )
-              }
-              return Promise.resolve()
-            })
-          )
-        }
       } else {
         alert("Failed to post reply: " + res.message)
       }

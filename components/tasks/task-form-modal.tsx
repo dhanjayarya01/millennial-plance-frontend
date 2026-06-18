@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils"
 import type { Task, TaskPriority, TaskStatus, ProjectStatus } from "@/types"
 import { api, BackendTask, BackendProject, BackendUser } from "@/lib/api"
 import { useAuth } from "@/components/providers/auth-provider"
-import { notificationService } from "@/lib/notification-service"
 
 interface TaskFormModalProps {
   open: boolean
@@ -175,77 +174,6 @@ export function TaskFormModal({ open, onClose, onSave, task, defaultProjectId }:
       }
 
       const isNewAssignee = String(newAssigneeId) !== String(oldAssigneeId)
-
-      if (newAssigneeId && isNewAssignee) {
-        const assigneeUser = users.find((u) => String(u.id) === String(newAssigneeId))
-        if (assigneeUser) {
-          const assignerName = currentUser?.name || "Administrator"
-          const assignerRole = currentUser?.role || "admin"
-          const taskName = savedTask.name
-
-          notificationService.sendSseNotification(
-            "Task Assigned",
-            `${assignerName} (${assignerRole}), assigned you to ${taskName} task, please check the task section or your email for more detail`,
-            "green",
-            String(newAssigneeId)
-          )
-
-          if (assigneeUser.email) {
-            notificationService.sendEmail(
-              assigneeUser.email,
-              `New Task Assigned: ${taskName}`,
-              `<p>Hello ${assigneeUser.fullName || assigneeUser.username},</p>
-               <p>You have been assigned to the task <strong>${taskName}</strong> by <strong>${assignerName} (${assignerRole})</strong>.</p>
-               <p><strong>Task Details:</strong></p>
-               <ul>
-                 <li><strong>Task Name:</strong> ${taskName}</li>
-                 <li><strong>Description:</strong> ${savedTask.description || "No description provided"}</li>
-                 <li><strong>Priority:</strong> ${savedTask.priority.toUpperCase()}</li>
-                 <li><strong>Deadline:</strong> ${savedTask.deadline || "No deadline"}</li>
-               </ul>
-               <p>Please check the task section in the app for more details.</p>`
-            )
-          }
-        }
-      }
-
-      // If priority changed, notify project members
-      if (newPriority !== oldPriority) {
-        if (selectedProject) {
-          const assignerName = currentUser?.name || "Administrator"
-          const assignerRole = currentUser?.role || "admin"
-          const projectMembers = [
-            selectedProject.manager,
-            ...(selectedProject.assignedEmployees || [])
-          ].filter(Boolean) as BackendUser[]
-
-          await Promise.all(
-            projectMembers.map((m) =>
-              notificationService.sendSseNotification(
-                "Task Priority Updated",
-                `Task "${savedTask.name}" changed to ${newPriority} priority, please check`,
-                "yellow",
-                String(m.id)
-              )
-            )
-          )
-        }
-      }
-
-      // If assignee is unchanged but other details/priority are changed, notify assignee
-      if (task && !isNewAssignee && newAssigneeId) {
-        const assigneeUser = users.find((u) => String(u.id) === String(newAssigneeId))
-        if (assigneeUser) {
-          const assignerName = currentUser?.name || "Administrator"
-          const assignerRole = currentUser?.role || "admin"
-          notificationService.sendSseNotification(
-            "Task Updated",
-            `${assignerName} (${assignerRole}), updated "${savedTask.name}" task, please check the task section`,
-            "green",
-            String(newAssigneeId)
-          )
-        }
-      }
 
       onSave(savedTask)
       onClose()

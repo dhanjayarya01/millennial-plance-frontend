@@ -30,7 +30,6 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { ProjectStatusBadge, TaskStatusBadge, PriorityBadge } from "@/components/shared/status-badge"
 import { ProjectFormModal } from "@/components/projects/project-form-modal"
 import { TaskFormModal } from "@/components/tasks/task-form-modal"
-import { notificationService } from "@/lib/notification-service"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, Role, WorkLog, WorkLogReply } from "@/types"
@@ -219,19 +218,6 @@ export default function ProjectDetailPage() {
           employeeIds: draggedTask.assigneeIds ? draggedTask.assigneeIds.map(Number) : [],
         }
         await api.updateTask(draggedTask.id, payload)
-        
-        const projectMembers = [manager, ...members].filter(Boolean) as any[]
-        await Promise.all(
-          projectMembers.map((m) =>
-            notificationService.sendSseNotification(
-              "Task Priority Updated",
-              `Task "${draggedTask.name}" changed to ${newPriority} priority, please check`,
-              "yellow",
-              String(m.id)
-            )
-          )
-        )
-
         loadData()
       } catch (err: any) {
         alert("Failed to update task priority: " + err.message)
@@ -377,27 +363,6 @@ export default function ProjectDetailPage() {
           })
         )
 
-        // Find work log to identify the task name and members to notify
-        const logItem = projectWorkLogs.find((l) => l.id === logId)
-        const targetTask = tasks.find((t) => t.id === logItem?.taskId)
-        const taskName = targetTask?.name || "Task"
-
-        // Send SSE notification to all project members
-        const projectMembers = [manager, ...members].filter(Boolean) as User[]
-        const senderName = user?.name || "Someone"
-        await Promise.all(
-          projectMembers.map((m) => {
-            if (m.id !== user?.id) {
-              return notificationService.sendSseNotification(
-                "New Work Log Reply",
-                `${senderName} replied to a work log on task "${taskName}": "${reply.message}"`,
-                "green",
-                String(m.id)
-              )
-            }
-            return Promise.resolve()
-          })
-        )
       } else {
         alert("Failed to post reply: " + res.message)
       }
@@ -413,31 +378,6 @@ export default function ProjectDetailPage() {
       const res = await api.assignManager(project.id, managerId)
       if (res.success) {
         setProject(mapProject(res.data))
-        const mgrUser = users.find((u) => u.id === managerId)
-        const assignerName = user?.name || "Administrator"
-        const assignerRole = user?.role || "admin"
-        notificationService.sendSseNotification(
-          "Project Assigned",
-          `${assignerName} (${assignerRole}), assigned you to ${project.name} project, please check the task section or your email for more detail`,
-          "green",
-          managerId
-        )
-        if (mgrUser?.email) {
-          notificationService.sendEmail(
-            mgrUser.email,
-            `Assigned as Project Manager: ${project.name}`,
-            `<p>Hello ${mgrUser.name},</p>
-             <p>You have been assigned as the Project Manager for the project <strong>${project.name}</strong> by <strong>${assignerName} (${assignerRole})</strong>.</p>
-             <p><strong>Project Details:</strong></p>
-             <ul>
-               <li><strong>Project Name:</strong> ${project.name}</li>
-               <li><strong>Description:</strong> ${project.description || "No description provided"}</li>
-               <li><strong>Start Date:</strong> ${project.startDate}</li>
-               <li><strong>End Date:</strong> ${project.endDate}</li>
-             </ul>
-             <p>Please check the project section in the app for more details.</p>`
-          )
-        }
       }
     } catch (err: any) {
       alert(err.message || "Failed to assign manager.")
@@ -450,31 +390,6 @@ export default function ProjectDetailPage() {
       const res = await api.assignEmployee(project.id, employeeId)
       if (res.success) {
         setProject(mapProject(res.data))
-        const empUser = users.find((u) => u.id === employeeId)
-        const assignerName = user?.name || "Administrator"
-        const assignerRole = user?.role || "admin"
-        notificationService.sendSseNotification(
-          "Project Assigned",
-          `${assignerName} (${assignerRole}), assigned you to ${project.name} project, please check the task section or your email for more detail`,
-          "green",
-          employeeId
-        )
-        if (empUser?.email) {
-          notificationService.sendEmail(
-            empUser.email,
-            `Assigned to Project: ${project.name}`,
-            `<p>Hello ${empUser.name},</p>
-             <p>You have been assigned to the project <strong>${project.name}</strong> by <strong>${assignerName} (${assignerRole})</strong>.</p>
-             <p><strong>Project Details:</strong></p>
-             <ul>
-               <li><strong>Project Name:</strong> ${project.name}</li>
-               <li><strong>Description:</strong> ${project.description || "No description provided"}</li>
-               <li><strong>Start Date:</strong> ${project.startDate}</li>
-               <li><strong>End Date:</strong> ${project.endDate}</li>
-             </ul>
-             <p>Please check the project section in the app for more details.</p>`
-          )
-        }
       }
     } catch (err: any) {
       alert(err.message || "Failed to assign employee.")
@@ -487,20 +402,6 @@ export default function ProjectDetailPage() {
       const res = await api.removeEmployee(project.id, employeeId)
       if (res.success) {
         setProject(mapProject(res.data))
-        const empUser = users.find((u) => u.id === employeeId)
-        notificationService.sendSseNotification(
-          "Member Removed",
-          `You have been removed from project "${project.name}"`,
-          "red",
-          employeeId
-        )
-        if (empUser?.email) {
-          notificationService.sendEmail(
-            empUser.email,
-            `Removed from Project: ${project.name}`,
-            `<p>Hello ${empUser.name},</p><p>You have been removed from the project: <strong>${project.name}</strong>.</p>`
-          )
-        }
       }
     } catch (err: any) {
       alert(err.message || "Failed to remove employee.")
@@ -525,18 +426,11 @@ export default function ProjectDetailPage() {
     }
     setNotifySubmitting(true)
     try {
-      const assignerName = user?.name || "Administrator"
-      const assignerRole = user?.role || "admin"
-      await Promise.all(
-        recipients.map((recipient) =>
-          notificationService.sendSseNotification(
-            notifyTitle,
-            `From ${assignerName} (${assignerRole}): ${notifyDesc}`,
-            notifyUrgency,
-            String(recipient.id)
-          )
-        )
-      )
+      await api.notifyAll(project.id, {
+        title: notifyTitle,
+        description: notifyDesc,
+        urgency: notifyUrgency,
+      })
       setNotifyModalOpen(false)
       alert(`SSE notification broadcasted to all ${recipients.length} team members!`)
     } catch (err) {
@@ -612,20 +506,10 @@ export default function ProjectDetailPage() {
     }
     setEmailSubmitting(true)
     try {
-      const assignerName = user?.name || "Administrator"
-      const assignerRole = user?.role || "admin"
-      await Promise.all(
-        recipients.map((recipient) =>
-          notificationService.sendEmail(
-            recipient.email,
-            emailSubject,
-            `<p>Hello ${recipient.name},</p>
-             <p>This is a project-wide email broadcast update regarding project <strong>${project.name}</strong> from <strong>${assignerName} (${assignerRole})</strong>.</p>
-             <hr/>
-             <p>${emailBody.replace(/\n/g, "<br/>")}</p>`
-          )
-        )
-      )
+      await api.emailAll(project.id, {
+        subject: emailSubject,
+        body: emailBody,
+      })
       setEmailModalOpen(false)
       alert(`Emails successfully dispatched to all ${emails.length} team members!`)
     } catch (err) {

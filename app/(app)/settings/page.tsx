@@ -57,19 +57,7 @@ export default function SettingsPage() {
 
     setUploadingPic(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const uploadRes = await fetch("/api/cloudinary/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadRes.ok) {
-        throw new Error("Failed to upload image to Cloudinary")
-      }
-
-      const uploadData = await uploadRes.json()
+      const uploadData = await api.uploadFile(file)
       if (uploadData.success && uploadData.url) {
         const updateRes = await api.updateProfilePicture(uploadData.url)
         if (updateRes.success) {
@@ -82,7 +70,7 @@ export default function SettingsPage() {
           alert("Failed to update profile picture in database: " + updateRes.message)
         }
       } else {
-        alert("Upload failed: " + uploadData.error)
+        alert("Upload failed: " + (uploadData.error || "Unknown error"))
       }
     } catch (err: any) {
       console.error(err)
