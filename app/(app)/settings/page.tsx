@@ -36,6 +36,10 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>("profile")
   const [saved, setSaved] = useState(false)
   const [uploadingPic, setUploadingPic] = useState(false)
+  const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" })
+  const [pwdError, setPwdError] = useState<string | null>(null)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
+  const [pwdLoading, setPwdLoading] = useState(false)
   const [enabledPrefs, setEnabledPrefs] = useState<Record<string, boolean>>({
     deadlines: true,
     assignments: true,
@@ -91,6 +95,38 @@ export default function SettingsPage() {
   function save() {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault()
+    setPwdError(null)
+    if (!pwdForm.next) {
+      setPwdError("New password cannot be empty.")
+      return
+    }
+    if (pwdForm.next !== pwdForm.confirm) {
+      setPwdError("Passwords do not match.")
+      return
+    }
+    if (pwdForm.next.length < 6) {
+      setPwdError("New password must be at least 6 characters.")
+      return
+    }
+    setPwdLoading(true)
+    try {
+      const res = await api.changePassword(pwdForm.current, pwdForm.next)
+      if (res.success) {
+        setPwdSuccess(true)
+        setPwdForm({ current: "", next: "", confirm: "" })
+        setTimeout(() => setPwdSuccess(false), 3000)
+      } else {
+        setPwdError(res.message || "Failed to change password.")
+      }
+    } catch (err: any) {
+      setPwdError(err.message || "Failed to change password.")
+    } finally {
+      setPwdLoading(false)
+    }
   }
 
   return (
@@ -218,22 +254,57 @@ export default function SettingsPage() {
                 <CardTitle>Change Password</CardTitle>
                 <CardDescription>Use a strong, unique password.</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="cur-pass">Current password</Label>
-                  <Input id="cur-pass" type="password" placeholder="••••••••" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="new-pass">New password</Label>
-                  <Input id="new-pass" type="password" placeholder="••••••••" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="conf-pass">Confirm new password</Label>
-                  <Input id="conf-pass" type="password" placeholder="••••••••" />
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={save}>{saved ? "Updated" : "Update password"}</Button>
-                </div>
+              <CardContent>
+                <form onSubmit={handlePasswordChange} className="flex flex-col gap-4">
+                  {pwdError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                      {pwdError}
+                    </div>
+                  )}
+                  {pwdSuccess && (
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+                      Password updated successfully!
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="cur-pass">Current password</Label>
+                    <Input
+                      id="cur-pass"
+                      type="password"
+                      placeholder="••••••••"
+                      value={pwdForm.current}
+                      onChange={(e) => setPwdForm((p) => ({ ...p, current: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="new-pass">New password</Label>
+                    <Input
+                      id="new-pass"
+                      type="password"
+                      placeholder="••••••••"
+                      value={pwdForm.next}
+                      onChange={(e) => setPwdForm((p) => ({ ...p, next: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="conf-pass">Confirm new password</Label>
+                    <Input
+                      id="conf-pass"
+                      type="password"
+                      placeholder="••••••••"
+                      value={pwdForm.confirm}
+                      onChange={(e) => setPwdForm((p) => ({ ...p, confirm: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={pwdLoading}>
+                      {pwdLoading ? "Updating..." : pwdSuccess ? "Updated ✓" : "Update password"}
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
           )}

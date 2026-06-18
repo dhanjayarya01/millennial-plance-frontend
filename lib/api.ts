@@ -252,6 +252,13 @@ class ApiService {
     });
   }
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<string>> {
+    return this.request<ApiResponse<string>>("/api/users/change-password", {
+      method: "PUT",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
   async assignManager(projectId: string, managerId: string): Promise<ApiResponse<BackendProject>> {
     return this.request<ApiResponse<BackendProject>>(`/api/projects/${projectId}/manager/${managerId}`, {
       method: "PUT",

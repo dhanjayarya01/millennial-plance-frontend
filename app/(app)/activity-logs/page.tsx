@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { Search, History, Clock, Paperclip, CornerDownRight, Send, ExternalLink, FolderKanban, CalendarDays, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
@@ -31,10 +31,22 @@ export default function ActivityLogsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
   const [query, setQuery] = useState("")
   const [entity, setEntity] = useState("all")
   const [project, setProject] = useState("all")
   const [loading, setLoading] = useState(true)
+  const [visibleCount, setVisibleCount] = useState(30)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(searchTerm), 400)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+
+  useEffect(() => {
+    setVisibleCount(30)
+  }, [query, entity, project])
 
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null)
   const [replyText, setReplyText] = useState("")
@@ -163,12 +175,14 @@ export default function ActivityLogsPage() {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
   }, [logs, query, entity, project, users])
 
+  const visibleFiltered = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
+
   const groups = useMemo(() => {
     return ENTITY_ORDER.map((type) => ({
       type,
-      logs: filtered.filter((l) => l.entity === type),
+      logs: visibleFiltered.filter((l) => l.entity === type),
     })).filter((g) => g.logs.length > 0)
-  }, [filtered])
+  }, [visibleFiltered])
 
   const isWorkLogAction = selectedLog ? (selectedLog.action === "logged_work" || selectedLog.action === "replied_to_worklog") : false
 
@@ -318,8 +332,8 @@ export default function ActivityLogsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search activity..."
             className="pl-9"
           />
@@ -345,19 +359,33 @@ export default function ActivityLogsPage() {
       {groups.length === 0 ? (
         <EmptyState icon={History} title="No activity found" description="Try a different search or filter." />
       ) : (
-        <div className="flex flex-col gap-6">
-          {groups.map((group) => (
-            <section key={group.type} className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <h2 className="font-heading text-sm font-semibold">{group.type}s</h2>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {group.logs.length}
-                </span>
-              </div>
-              <ActivityTimeline users={users} customLogs={group.logs} onLogClick={setSelectedLog} />
-            </section>
-          ))}
-        </div>
+      <div
+        ref={listRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          if (el.scrollHeight - el.scrollTop <= el.clientHeight + 80) {
+            setVisibleCount((c) => c + 20)
+          }
+        }}
+        className="max-h-[600px] overflow-y-auto pr-1 flex flex-col gap-6 scrollbar-thin"
+      >
+        {groups.map((group) => (
+          <section key={group.type} className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="font-heading text-sm font-semibold">{group.type}s</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {filtered.filter(l => l.entity === group.type).length}
+              </span>
+            </div>
+            <ActivityTimeline users={users} customLogs={group.logs} onLogClick={setSelectedLog} />
+          </section>
+        ))}
+        {visibleCount < filtered.length && (
+          <div className="flex justify-center py-3">
+            <div className="size-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+          </div>
+        )}
+      </div>
       )}
 
       {/* Details Modal */}

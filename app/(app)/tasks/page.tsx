@@ -65,10 +65,16 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<View>("board")
+  const [searchTerm, setSearchTerm] = useState("")
   const [query, setQuery] = useState("")
   const [priority, setPriority] = useState<TaskPriority | "all">("all")
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(searchTerm), 400)
+    return () => clearTimeout(t)
+  }, [searchTerm])
 
   useEffect(() => {
     async function loadData() {
@@ -201,7 +207,7 @@ export default function TasksPage() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks..." className="pl-9" />
+          <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search tasks..." className="pl-9" />
         </div>
         <Select
           value={priority}

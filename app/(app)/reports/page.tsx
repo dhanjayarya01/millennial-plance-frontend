@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { TrendingUp, Clock, CheckCircle2, Target } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatCard } from "@/components/cards/stat-card"
@@ -11,9 +11,14 @@ import { BarChart } from "@/components/charts/bar-chart"
 import { LineChart } from "@/components/charts/line-chart"
 import { DonutChart } from "@/components/charts/donut-chart"
 import { DataTable, TableRow, TableCell } from "@/components/tables/data-table"
-import { api, BackendTask, BackendWorkLog, BackendWorkLogReply, BackendProject } from "@/lib/api"
-import type { Task, WorkLog, User, Project, TaskStatus, TaskPriority, ProjectStatus, Role } from "@/types"
+import { ActivityTimeline } from "@/components/shared/activity-timeline"
+import { api } from "@/lib/api"
+import type { Task, WorkLog, User, Project, TaskStatus, TaskPriority, ProjectStatus, Role, ActivityLog } from "@/types"
 import { isOverdue } from "@/lib/format"
+
+function fmt(n: number, decimals = 1) {
+  return parseFloat(n.toFixed(decimals))
+}
 
 export default function ReportsPage() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -65,22 +70,20 @@ export default function ReportsPage() {
             createdById: t.createdBy ? String(t.createdBy.id) : "",
           }))
 
-          const mapReply = (r: any) => ({
-            id: String(r.id),
-            authorId: String(r.authorId),
-            message: r.message,
-            timestamp: r.timestamp,
-          })
-
           const mappedWorkLogs = logsRes.data.map((w): WorkLog => ({
             id: String(w.id),
             authorId: String(w.authorId),
             taskId: String(w.taskId),
             message: w.message,
-            hours: w.hours,
+            hours: Number(w.hours) || 0,
             timestamp: w.timestamp,
             attachments: w.attachments || [],
-            replies: w.replies ? w.replies.map(mapReply) : [],
+            replies: w.replies ? w.replies.map((r: any) => ({
+              id: String(r.id),
+              authorId: String(r.authorId),
+              message: r.message,
+              timestamp: r.timestamp,
+            })) : [],
           }))
 
           const mappedUsers = usersRes.data.map((u): User => ({
@@ -88,7 +91,7 @@ export default function ReportsPage() {
             name: u.fullName,
             email: u.email,
             password: "",
-            role: (u.role === "ROLE_ADMIN" ? "admin" : u.role === "ROLE_PROJECT_MANAGER" ? "manager" : "employee"),
+            role: (u.role === "ROLE_ADMIN" ? "admin" : u.role === "ROLE_PROJECT_MANAGER" ? "manager" : "employee") as Role,
             avatar: u.profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`,
             jobTitle: u.role === "ROLE_ADMIN" ? "Administrator" : u.role === "ROLE_PROJECT_MANAGER" ? "Project Manager" : "Software Engineer",
             department: "Engineering",
@@ -125,8 +128,8 @@ export default function ReportsPage() {
     // Stat 1: Tasks Completed
     const completedTasksCount = tasks.filter(t => t.status === "done").length
 
-    // Stat 2: Hours Logged
-    const totalHoursLogged = workLogs.reduce((sum, wl) => sum + wl.hours, 0)
+    // Stat 2: Hours Logged - round to 1 decimal
+    const totalHoursLogged = fmt(workLogs.reduce((sum, wl) => sum + (Number(wl.hours) || 0), 0))
 
     // Stat 3: Team Performance Rows & Avg Productivity
     const teamPerformanceList = users
@@ -136,8 +139,8 @@ export default function ReportsPage() {
         const completed = userTasks.filter(t => t.status === "done").length
         const inProgress = userTasks.filter(t => t.status === "in-progress").length
         const userLogs = workLogs.filter(wl => String(wl.authorId) === String(u.id))
-        const hoursLogged = userLogs.reduce((sum, wl) => sum + wl.hours, 0)
-        const total = completed + inProgress
+        const hoursLogged = fmt(userLogs.reduce((sum, wl) => sum + (Number(wl.hours) || 0), 0))
+        const total = userTasks.length
         const productivity = total > 0 ? Math.round((completed / total) * 100) : 0
 
         return {
@@ -148,6 +151,7 @@ export default function ReportsPage() {
           hoursLogged,
         }
       })
+      .filter(r => r.completed > 0 || r.inProgress > 0 || r.hoursLogged > 0)
 
     const avgProductivity = teamPerformanceList.length > 0
       ? Math.round(teamPerformanceList.reduce((s, r) => s + r.productivity, 0) / teamPerformanceList.length)
@@ -166,30 +170,54 @@ export default function ReportsPage() {
       { label: "Done", value: tasks.filter(t => t.status === "done").length },
     ]
 
-    // Line Chart weekly completion
+    // Line Chart: weekly hours logged per day
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     const weeklyPoints = days.map(d => ({ label: d, value: 0 }))
     workLogs.forEach(wl => {
       try {
         const dayIndex = new Date(wl.timestamp).getDay()
-        const dayName = days[dayIndex]
-        const point = weeklyPoints.find(p => p.label === dayName)
+        const point = weeklyPoints[dayIndex]
         if (point) {
-          point.value += wl.hours
+          point.value += Number(wl.hours) || 0
         }
       } catch (e) {}
     })
     const orderedDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     const weeklyCompletion = orderedDays.map(day => ({
       label: day,
-      value: Math.round(weeklyPoints.find(p => p.label === day)?.value || 0)
+      value: fmt(weeklyPoints.find(p => p.label === day)?.value || 0)
     }))
 
-    // Project Progress
+    // Tasks by Project (bar chart - number of tasks per project)
+    const tasksByProject = projects.map(p => ({
+      label: p.name.length > 14 ? p.name.substring(0, 12) + "…" : p.name,
+      value: tasks.filter(t => String(t.projectId) === String(p.id)).length,
+    })).filter(d => d.value > 0).slice(0, 6)
+
+    // Project completion progress bars
     const projectProgressList = projects.map(p => ({
       label: p.name,
       value: p.completion,
     }))
+
+    // Recent activity logs derived from tasks
+    const activityLogs: ActivityLog[] = []
+    tasks.forEach(t => {
+      if (t.status === "done") {
+        activityLogs.push({
+          id: `t-done-${t.id}`,
+          userId: t.assigneeId || "u-1",
+          action: "completed",
+          entity: "Task",
+          entityName: t.name,
+          timestamp: t.deadline ? `${t.deadline}T16:00:00Z` : new Date().toISOString(),
+          oldValue: "in-progress",
+          newValue: "done",
+          projectId: t.projectId,
+        })
+      }
+    })
+    activityLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
     return {
       completedTasksCount,
@@ -198,8 +226,10 @@ export default function ReportsPage() {
       onTimeRate,
       taskStatusBreakdown,
       weeklyCompletion,
+      tasksByProject,
       projectProgressList,
       teamPerformanceList,
+      activityLogs,
     }
   }, [tasks, workLogs, users, projects])
 
@@ -218,14 +248,17 @@ export default function ReportsPage() {
     onTimeRate,
     taskStatusBreakdown,
     weeklyCompletion,
+    tasksByProject,
     projectProgressList,
     teamPerformanceList,
+    activityLogs,
   } = computedMetrics
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Reports" description="Productivity, completion and team performance metrics." />
 
+      {/* Stat Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Tasks Completed" value={completedTasksCount} icon={CheckCircle2} accent="success" />
         <StatCard label="Hours Logged" value={`${totalHoursLogged}h`} icon={Clock} accent="primary" />
@@ -233,10 +266,11 @@ export default function ReportsPage() {
         <StatCard label="On-time Rate" value={`${onTimeRate}%`} icon={Target} accent="warning" />
       </div>
 
+      {/* Charts row */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Work Logging Trend (Hours)</CardTitle>
+            <CardTitle>Work Logging Trend (Hours/Day)</CardTitle>
           </CardHeader>
           <CardContent>
             <LineChart data={weeklyCompletion} />
@@ -252,26 +286,62 @@ export default function ReportsPage() {
         </Card>
       </div>
 
+      {/* Tasks by Project & Recent Activity */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tasks by Project</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {tasksByProject.length === 0 ? (
+              <p className="text-center py-6 text-sm text-muted-foreground">No project task data found.</p>
+            ) : (
+              <BarChart data={tasksByProject} unit=" tasks" />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="max-h-[320px] overflow-y-auto px-5 pb-4 pt-0 scrollbar-thin">
+              <ActivityTimeline users={users} customLogs={activityLogs} limit={15} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Project Completion */}
       <Card>
         <CardHeader>
           <CardTitle>Project Completion</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
           {projectProgressList.length === 0 ? (
-            <p className="text-center py-6 text-sm text-muted-foreground">No projects found.</p>
+            <p className="text-center py-4 text-sm text-muted-foreground">No projects found.</p>
           ) : (
-            <BarChart data={projectProgressList} unit="%" />
+            projectProgressList.map((p) => (
+              <div key={p.label} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="truncate font-medium max-w-[70%]">{p.label}</span>
+                  <span className="text-muted-foreground shrink-0">{Math.round(p.value)}%</span>
+                </div>
+                <Progress value={p.value} />
+              </div>
+            ))
           )}
         </CardContent>
       </Card>
 
+      {/* Team Productivity Table */}
       <Card className="p-0">
         <CardHeader className="px-5 pt-5">
           <CardTitle>Team Productivity Breakdown</CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
           {teamPerformanceList.length === 0 ? (
-            <p className="text-center py-6 text-sm text-muted-foreground">No team performance data available.</p>
+            <p className="text-center py-6 text-sm text-muted-foreground">No team performance data available yet.</p>
           ) : (
             <DataTable
               headers={[
@@ -289,7 +359,7 @@ export default function ReportsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Avatar name={member?.name ?? "?"} src={member?.avatar} size="sm" role={member?.role} />
-                        <span className="text-sm font-medium">{member?.name}</span>
+                        <span className="text-sm font-medium">{member?.name ?? "—"}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">{row.completed}</TableCell>
@@ -297,8 +367,8 @@ export default function ReportsPage() {
                     <TableCell className="text-sm">{row.hoursLogged}h</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Progress value={row.productivity} className="w-24" />
-                        <span className="text-sm font-medium">{row.productivity}%</span>
+                        <Progress value={row.productivity} className="w-20" />
+                        <span className="text-sm font-medium shrink-0">{row.productivity}%</span>
                       </div>
                     </TableCell>
                   </TableRow>

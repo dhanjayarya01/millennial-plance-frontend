@@ -249,8 +249,10 @@ export function AdminDashboard() {
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ActivityTimeline limit={5} users={mappedUsers} customLogs={activities} />
+          <CardContent className="p-0">
+            <div className="max-h-[320px] overflow-y-auto px-5 pb-4 pt-0 scrollbar-thin">
+              <ActivityTimeline limit={10} users={mappedUsers} customLogs={activities} />
+            </div>
           </CardContent>
         </Card>
       </div>
