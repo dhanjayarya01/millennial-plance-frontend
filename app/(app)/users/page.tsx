@@ -203,7 +203,8 @@ export default function UsersPage() {
       await notificationService.sendSseNotification(
         sseTitle,
         `[Direct to ${selectedUser.name}]: ${sseDesc}`,
-        sseUrgency
+        sseUrgency,
+        selectedUser.id
       )
       setSseTitle("")
       setSseDesc("")

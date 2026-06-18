@@ -1,12 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useAuth } from "@/components/providers/auth-provider"
+import { useEffect, useMemo, useState } from "react"
 import { Bell, AlertTriangle, Clock, AtSign, UserPlus, Info, Check, BellOff } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { EmptyState } from "@/components/shared/empty-state"
-import { dummyNotifications } from "@/data/dummyNotifications"
 import { timeAgo } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { AppNotification } from "@/types"
@@ -32,22 +32,101 @@ const filters = [
   { key: "unread", label: "Unread" },
 ] as const
 
+function mapWorkerNotification(notif: any): AppNotification {
+  let mappedType: "deadline" | "overdue" | "mention" | "assignment" | "system" = "system";
+  if (notif.type.startsWith("REMINDER_")) {
+    mappedType = "deadline";
+  } else if (notif.type === "OVERDUE" || notif.type === "OVERDUE_MANAGER") {
+    mappedType = "overdue";
+  }
+  return {
+    id: String(notif.id),
+    title: notif.title,
+    message: notif.message,
+    type: mappedType,
+    read: notif.read,
+    timestamp: notif.createdAt,
+  };
+}
+
 export default function NotificationsPage() {
-  const [items, setItems] = useState<AppNotification[]>(dummyNotifications)
+  const { user } = useAuth()
+  const [items, setItems] = useState<AppNotification[]>([])
   const [filter, setFilter] = useState<(typeof filters)[number]["key"]>("all")
   const unread = items.filter((n) => !n.read).length
+
+  useEffect(() => {
+    if (!user) return;
+
+    async function fetchNotifications() {
+      try {
+        const res = await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setItems(data.map(mapWorkerNotification))
+        }
+      } catch (err) {
+        console.error("Error fetching notifications:", err)
+      }
+    }
+
+    fetchNotifications()
+
+    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${user.id}`)
+
+    const handleNotification = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        const mapped = mapWorkerNotification(data)
+        setItems((prev) => {
+          if (prev.some((n) => n.id === mapped.id)) return prev
+          return [mapped, ...prev]
+        })
+      } catch (err) {
+        console.error("Error parsing real-time notification:", err)
+      }
+    }
+
+    eventSource.addEventListener("notification", handleNotification)
+
+    return () => {
+      eventSource.removeEventListener("notification", handleNotification)
+      eventSource.close()
+    }
+  }, [user])
 
   const filtered = useMemo(
     () => (filter === "unread" ? items.filter((n) => !n.read) : items),
     [items, filter],
   )
 
-  function markAllRead() {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })))
+  async function markAllRead() {
+    if (!user) return
+    try {
+      await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}/read-all`, {
+        method: "PUT",
+      })
+      setItems((prev) => prev.map((n) => ({ ...n, read: true })))
+    } catch (err) {
+      console.error("Error marking all read:", err)
+    }
   }
 
-  function toggleRead(id: string) {
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)))
+  async function toggleRead(id: string) {
+    const notif = items.find((n) => n.id === id)
+    if (!notif) return
+
+    try {
+      const newReadState = !notif.read
+      if (newReadState) {
+        await fetch(`http://localhost:8081/api/worker/notifications/${id}/read`, {
+          method: "PUT",
+        })
+      }
+      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: newReadState } : n)))
+    } catch (err) {
+      console.error("Error toggling read state:", err)
+    }
   }
 
   return (

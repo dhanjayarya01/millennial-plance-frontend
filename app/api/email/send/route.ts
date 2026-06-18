@@ -1,65 +1,45 @@
 import { NextResponse } from "next/server"
-import nodemailer from "nodemailer"
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { to, subject, html } = body
 
-    const host = process.env.SMTP_HOST
-    const port = process.env.SMTP_PORT
-    const user = process.env.SMTP_USER
-    const pass = process.env.SMTP_PASS
-    const from = process.env.SMTP_FROM || "no-reply@millennial.com"
+    const apiKey = process.env.RESEND_API_KEY || "re_jh46LVYz_1pjYcC5gMrjsR1zcnueZhcB3"
+    const from = process.env.EMAIL_FROM || "GetPlaced <noreply@getplaced.tech>"
 
-    let transporter
-
-    if (host && port && user && pass) {
-      transporter = nodemailer.createTransport({
-        host,
-        port: Number(port),
-        auth: {
-          user,
-          pass,
-        },
-      })
-    } else {
-      try {
-        const testAccount = await nodemailer.createTestAccount()
-        transporter = nodemailer.createTransport({
-          host: "smtp.ethereal.email",
-          port: 587,
-          secure: false,
-          auth: {
-            user: testAccount.user,
-            pass: testAccount.pass,
-          },
-        })
-      } catch (err) {
-        console.log("=== EMAIL SENDING SIMULATION ===")
-        console.log("To:", to)
-        console.log("Subject:", subject)
-        console.log("HTML:", html)
-        console.log("================================")
-        return NextResponse.json({ success: true, simulated: true })
-      }
+    if (!apiKey) {
+      return NextResponse.json({ success: false, error: "Resend API Key is not configured." }, { status: 500 })
     }
 
-    const info = await transporter.sendMail({
-      from,
-      to,
-      subject,
-      html,
+    console.log(`Sending email via Resend API to: ${to}, subject: ${subject}`);
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject,
+        html
+      })
     })
 
-    const previewUrl = nodemailer.getTestMessageUrl(info)
+    if (!res.ok) {
+      const errorText = await res.text()
+      throw new Error(`Resend API failed: ${errorText}`)
+    }
+
+    const resData = await res.json()
 
     return NextResponse.json({
       success: true,
-      messageId: info.messageId,
-      previewUrl: previewUrl || undefined,
+      messageId: resData.id,
     })
   } catch (e: any) {
+    console.error("Error sending email via Resend:", e)
     return NextResponse.json({ success: false, error: e.message }, { status: 400 })
   }
 }

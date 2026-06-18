@@ -1,10 +1,10 @@
 export const notificationService = {
-  async sendSseNotification(title: string, description: string, urgency: "green" | "yellow" | "red") {
+  async sendSseNotification(title: string, description: string, urgency: "green" | "yellow" | "red", userId?: string) {
     try {
       const res = await fetch("/api/notifications/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, urgency }),
+        body: JSON.stringify({ title, description, urgency, userId }),
       });
       return await res.json();
     } catch (e) {

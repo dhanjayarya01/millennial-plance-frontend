@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import { Bell, Mail, X } from "lucide-react"
 
+import { useAuth } from "@/components/providers/auth-provider"
+
 interface NotificationData {
   title: string
   description: string
@@ -12,36 +14,40 @@ interface NotificationData {
 }
 
 export function NotificationListener() {
+  const { user } = useAuth()
   const [activeNotification, setActiveNotification] = useState<NotificationData | null>(null)
 
   useEffect(() => {
-    const eventSource = new EventSource("/api/notifications/sse")
+    if (!user) return
 
-    eventSource.onmessage = (event) => {
+    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${user.id}`)
+
+    const handleNotification = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.type === "heartbeat") return
-
         setActiveNotification({
           title: data.title,
-          description: data.description,
-          urgency: data.urgency,
-          timestamp: data.timestamp,
-          isEmail: data.isEmail || false,
+          description: data.message,
+          urgency: data.type === "OVERDUE" || data.type === "OVERDUE_MANAGER" ? "red" : data.type === "REMINDER_48H" ? "green" : "yellow",
+          timestamp: data.createdAt,
+          isEmail: false,
         })
       } catch (err) {
         console.error("Error parsing SSE event data:", err)
       }
     }
 
+    eventSource.addEventListener("notification", handleNotification)
+
     eventSource.onerror = (err) => {
       console.error("SSE connection error, retrying...", err)
     }
 
     return () => {
+      eventSource.removeEventListener("notification", handleNotification)
       eventSource.close()
     }
-  }, [])
+  }, [user])
 
   if (!activeNotification) return null
 

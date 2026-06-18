@@ -10,24 +10,26 @@ import { getUserById } from "@/data/dummyUsers"
 import { getProjectById } from "@/data/dummyProjects"
 import { dummyTasks } from "@/data/dummyTasks"
 import { timeAgo } from "@/lib/format"
-import type { WorkLog, WorkLogReply } from "@/types"
-
-function getTaskName(taskId: string) {
-  return dummyTasks.find((t) => t.id === taskId)?.name ?? "Task"
-}
+import type { WorkLog, WorkLogReply, User, Task, Project } from "@/types"
 
 export function WorkLogCard({
   log,
   currentUserId,
   onReply,
+  users = [],
+  tasks = [],
+  projects = [],
 }: {
   log: WorkLog
   currentUserId: string
   onReply: (logId: string, reply: WorkLogReply) => void
+  users?: User[]
+  tasks?: Task[]
+  projects?: Project[]
 }) {
-  const author = getUserById(log.authorId)
-  const task = dummyTasks.find((t) => t.id === log.taskId)
-  const project = task ? getProjectById(task.projectId) : undefined
+  const author = users.find((u) => String(u.id) === String(log.authorId)) || getUserById(log.authorId)
+  const task = tasks.find((t) => String(t.id) === String(log.taskId)) || dummyTasks.find((t) => t.id === log.taskId)
+  const project = task ? (projects.find((p) => String(p.id) === String(task.projectId)) || getProjectById(task.projectId)) : undefined
   const [draft, setDraft] = useState("")
 
   function submitReply(e: React.FormEvent) {
@@ -50,7 +52,7 @@ export function WorkLogCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-sm font-medium">{author?.name}</span>
             <span className="text-xs text-muted-foreground">logged work on</span>
-            <span className="text-sm font-medium">{getTaskName(log.taskId)}</span>
+            <span className="text-sm font-medium">{task?.name ?? "Task"}</span>
             <span className="text-xs text-muted-foreground">· {timeAgo(log.timestamp)}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -63,7 +65,7 @@ export function WorkLogCard({
 
           <p className="mt-3 text-sm leading-relaxed text-pretty">{log.message}</p>
 
-          {log.attachments.length > 0 && (
+          {log.attachments && log.attachments.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {log.attachments.map((file) => (
                 <span
@@ -77,10 +79,10 @@ export function WorkLogCard({
             </div>
           )}
 
-          {log.replies.length > 0 && (
+          {log.replies && log.replies.length > 0 && (
             <ul className="mt-4 flex flex-col gap-3 border-l-2 border-border pl-4">
               {log.replies.map((reply) => {
-                const replyAuthor = getUserById(reply.authorId)
+                const replyAuthor = users.find((u) => String(u.id) === String(reply.authorId)) || getUserById(reply.authorId)
                 return (
                   <li key={reply.id} className="flex gap-2.5">
                     <Avatar name={replyAuthor?.name ?? "?"} size="sm" />

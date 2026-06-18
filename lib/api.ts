@@ -255,6 +255,94 @@ class ApiService {
       method: "DELETE",
     });
   }
+
+  async getWorkLogs(projectId?: string, employeeId?: string): Promise<ApiResponse<BackendWorkLog[]>> {
+    const params = new URLSearchParams()
+    if (projectId) params.append("projectId", projectId)
+    if (employeeId) params.append("employeeId", employeeId)
+    const queryStr = params.toString() ? `?${params.toString()}` : ""
+    return this.request<ApiResponse<BackendWorkLog[]>>(`/api/work-logs${queryStr}`, {
+      method: "GET",
+    })
+  }
+
+  async createWorkLog(data: {
+    taskId: number
+    message: string
+    hours: number
+    attachmentUrl?: string
+  }): Promise<ApiResponse<BackendWorkLog>> {
+    return this.request<ApiResponse<BackendWorkLog>>("/api/work-logs", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async createWorkLogReply(workLogId: string, message: string): Promise<ApiResponse<BackendWorkLogReply>> {
+    return this.request<ApiResponse<BackendWorkLogReply>>(`/api/work-logs/${workLogId}/replies`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    })
+  }
+
+  async getAuditLogs(): Promise<ApiResponse<BackendAuditLog[]>> {
+    return this.request<ApiResponse<BackendAuditLog[]>>("/api/audit-logs", {
+      method: "GET",
+    })
+  }
+
+  async getProjectReport(projectId: string): Promise<ApiResponse<BackendReport>> {
+    return this.request<ApiResponse<BackendReport>>(`/api/reports/projects/${projectId}`, {
+      method: "GET",
+    })
+  }
+
+  async getEmployeeReport(employeeId: string): Promise<ApiResponse<BackendReport>> {
+    return this.request<ApiResponse<BackendReport>>(`/api/reports/employees/${employeeId}`, {
+      method: "GET",
+    })
+  }
+}
+
+export interface BackendWorkLogReply {
+  id: number;
+  authorId: string;
+  authorName: string;
+  message: string;
+  timestamp: string;
+}
+
+export interface BackendWorkLog {
+  id: number;
+  taskId: number;
+  taskName: string;
+  authorId: string;
+  authorName: string;
+  message: string;
+  hours: number;
+  timestamp: string;
+  attachments: string[];
+  replies: BackendWorkLogReply[];
+}
+
+export interface BackendAuditLog {
+  id: string;
+  userId: string;
+  action: string;
+  entity: string;
+  entityName: string;
+  timestamp: string;
+  oldValue: string;
+  newValue: string;
+  projectId?: string;
+}
+
+export interface BackendReport {
+  completionPercentage: number;
+  totalTasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+  totalHoursLogged: number;
 }
 
 export const api = new ApiService();

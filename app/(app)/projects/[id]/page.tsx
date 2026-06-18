@@ -38,6 +38,7 @@ import { api, BackendProject, BackendTask } from "@/lib/api"
 import { Modal } from "@/components/ui/modal"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 const mapProject = (p: BackendProject): Project => {
   const mapStatus = (s: string): ProjectStatus => {
@@ -112,6 +113,11 @@ export default function ProjectDetailPage() {
   const [isEditingTeam, setIsEditingTeam] = useState(false)
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false)
+  const [meetingTitle, setMeetingTitle] = useState("")
+  const [meetingTime, setMeetingTime] = useState("")
+  const [meetLink, setMeetLink] = useState("")
+  const [meetingSubmitting, setMeetingSubmitting] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const containerRef = useRef<HTMLUListElement>(null)
@@ -374,13 +380,59 @@ export default function ProjectDetailPage() {
 
   async function handleNotifyAll() {
     if (!project) return
-    const count = members.length + (manager ? 1 : 0)
-    await notificationService.sendSseNotification(
-      `Project Broadcast: ${project.name}`,
-      `Urgent alert sent to all ${count} team members regarding project status.`,
-      "yellow"
+    const recipients = [manager, ...members].filter(Boolean) as any[]
+    if (recipients.length === 0) {
+      alert("No team members to notify.")
+      return
+    }
+    await Promise.all(
+      recipients.map((recipient) =>
+        notificationService.sendSseNotification(
+          `Project Broadcast: ${project.name}`,
+          `Urgent alert regarding project status.`,
+          "yellow",
+          String(recipient.id)
+        )
+      )
     )
-    alert(`SSE notification broadcasted to all ${count} team members!`)
+    alert(`SSE notification broadcasted to all ${recipients.length} team members!`)
+  }
+
+  async function handleCreateMeeting(e: React.FormEvent) {
+    e.preventDefault()
+    if (!project || !meetingTitle || !meetingTime || !meetLink) return
+    setMeetingSubmitting(true)
+    try {
+      const recipientIds = [manager?.id, ...members.map((m) => m.id)].filter(Boolean).map(String).join(",")
+      const recipientEmails = [manager?.email, ...members.map((m) => m.email)].filter(Boolean).join(",")
+      
+      const res = await fetch("http://localhost:8081/api/worker/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: meetingTitle,
+          meetLink,
+          meetingTime: new Date(meetingTime).toISOString(),
+          projectId: Number(project.id),
+          recipientIds,
+          recipientEmails
+        })
+      })
+
+      if (res.ok) {
+        setMeetingModalOpen(false)
+        setMeetingTitle("")
+        setMeetingTime("")
+        alert("Meeting successfully scheduled and notifications sent to the team!")
+      } else {
+        alert("Failed to schedule meeting.")
+      }
+    } catch (err) {
+      console.error("Error scheduling meeting:", err)
+      alert("Error scheduling meeting.")
+    } finally {
+      setMeetingSubmitting(false)
+    }
   }
 
   async function handleEmailAll(e: React.MouseEvent) {
@@ -749,7 +801,12 @@ export default function ProjectDetailPage() {
                 variant="outline"
                 size="sm"
                 className="w-full justify-start gap-2 text-xs"
-                onClick={() => alert("Redirecting to schedule team alignment meeting...")}
+                onClick={() => {
+                  setMeetingTitle("")
+                  setMeetingTime("")
+                  setMeetLink(`https://meet.google.com/${Math.random().toString(36).substring(2,5)}-${Math.random().toString(36).substring(2,6)}-${Math.random().toString(36).substring(2,5)}`)
+                  setMeetingModalOpen(true)
+                }}
               >
                 <Video className="size-3.5 text-primary" />
                 Schedule Meeting
@@ -925,6 +982,43 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={meetingModalOpen}
+        onClose={() => setMeetingModalOpen(false)}
+        title="Schedule Project Meeting"
+        description="Schedule a team alignment meeting. Recipients will receive direct alerts and emails immediately, plus a reminder 1 minute before the meeting start time."
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setMeetingModalOpen(false)} disabled={meetingSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateMeeting} disabled={meetingSubmitting || !meetingTitle || !meetingTime || !meetLink}>
+              {meetingSubmitting ? "Scheduling..." : "Schedule Meeting"}
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleCreateMeeting} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="meet-title">Meeting Title</Label>
+            <Input id="meet-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} placeholder="Team Alignment Meeting..." required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="meet-time">Meeting Time & Date</Label>
+            <Input id="meet-time" type="datetime-local" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="meet-url">Meeting Link</Label>
+            <div className="flex gap-2">
+              <Input id="meet-url" value={meetLink} onChange={(e) => setMeetLink(e.target.value)} placeholder="https://meet.google.com/..." required />
+              <Button type="button" variant="outline" onClick={() => setMeetLink(`https://meet.google.com/${Math.random().toString(36).substring(2,5)}-${Math.random().toString(36).substring(2,6)}-${Math.random().toString(36).substring(2,5)}`)}>
+                Regen
+              </Button>
+            </div>
+          </div>
+        </form>
       </Modal>
     </div>
   )

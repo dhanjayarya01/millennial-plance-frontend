@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Bell, AlertTriangle, Clock, AtSign, UserPlus, Info, Check } from "lucide-react"
 import { Dropdown } from "@/components/ui/dropdown"
-import { dummyNotifications } from "@/data/dummyNotifications"
 import { timeAgo } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { AppNotification } from "@/types"
+import { useAuth } from "@/components/providers/auth-provider"
 
 const typeIcon = {
   deadline: Clock,
@@ -24,16 +24,94 @@ const typeColor = {
   system: "text-muted-foreground",
 }
 
+function mapWorkerNotification(notif: any): AppNotification {
+  let mappedType: "deadline" | "overdue" | "mention" | "assignment" | "system" = "system";
+  if (notif.type.startsWith("REMINDER_")) {
+    mappedType = "deadline";
+  } else if (notif.type === "OVERDUE" || notif.type === "OVERDUE_MANAGER") {
+    mappedType = "overdue";
+  }
+  return {
+    id: String(notif.id),
+    title: notif.title,
+    message: notif.message,
+    type: mappedType,
+    read: notif.read,
+    timestamp: notif.createdAt,
+  };
+}
+
 export function NotificationsMenu() {
-  const [items, setItems] = useState<AppNotification[]>(dummyNotifications)
+  const { user } = useAuth()
+  const [items, setItems] = useState<AppNotification[]>([])
   const unread = items.filter((n) => !n.read).length
 
-  function markAllRead() {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })))
+  useEffect(() => {
+    if (!user) return;
+
+    async function fetchNotifications() {
+      try {
+        const res = await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setItems(data.map(mapWorkerNotification))
+        }
+      } catch (err) {
+        console.error("Error fetching notifications:", err)
+      }
+    }
+
+    fetchNotifications()
+
+    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${user.id}`)
+
+    const handleNotification = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        const mapped = mapWorkerNotification(data)
+        setItems((prev) => {
+          if (prev.some((n) => n.id === mapped.id)) return prev
+          return [mapped, ...prev]
+        })
+      } catch (err) {
+        console.error("Error parsing real-time notification:", err)
+      }
+    }
+
+    eventSource.addEventListener("notification", handleNotification)
+
+    return () => {
+      eventSource.removeEventListener("notification", handleNotification)
+      eventSource.close()
+    }
+  }, [user])
+
+  async function markAllRead() {
+    if (!user) return
+    try {
+      await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}/read-all`, {
+        method: "PUT",
+      })
+      setItems((prev) => prev.map((n) => ({ ...n, read: true })))
+    } catch (err) {
+      console.error("Error marking all read:", err)
+    }
   }
 
-  function toggleRead(id: string) {
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)))
+  async function toggleRead(id: string) {
+    const notif = items.find((n) => n.id === id)
+    if (!notif) return
+
+    try {
+      if (!notif.read) {
+        await fetch(`http://localhost:8081/api/worker/notifications/${id}/read`, {
+          method: "PUT",
+        })
+      }
+      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)))
+    } catch (err) {
+      console.error("Error toggling read state:", err)
+    }
   }
 
   return (
