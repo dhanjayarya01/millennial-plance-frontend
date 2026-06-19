@@ -33,7 +33,7 @@ import { TaskFormModal } from "@/components/tasks/task-form-modal"
 import { formatDate, isOverdue } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Project, ProjectStatus, Task, TaskPriority, TaskStatus, User, Role, WorkLog, WorkLogReply } from "@/types"
-import { api, BackendProject, BackendTask, BackendWorkLog, BackendWorkLogReply } from "@/lib/api"
+import { api, BackendProject, BackendTask, BackendWorkLog, BackendWorkLogReply, WORKER_BASE_URL } from "@/lib/api"
 import { Modal } from "@/components/ui/modal"
 import { WorkLogCard } from "@/components/work-logs/work-log-card"
 import { Badge } from "@/components/ui/badge"
@@ -63,6 +63,9 @@ const mapProject = (p: BackendProject): Project => {
     completion: p.progressPercentage || 0,
   }
 }
+// Note: Keeping line structure clean
+// Let's replace the fetch around line 460
+
 
 const mapTask = (t: BackendTask): Task => {
   const mapPriority = (p: string): TaskPriority => {
@@ -457,7 +460,7 @@ export default function ProjectDetailPage() {
         reminderTimeStr = reminderDt.toISOString()
       }
 
-      const res = await fetch("http://localhost:8081/api/worker/meetings", {
+      const res = await fetch(`${WORKER_BASE_URL}/api/worker/meetings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

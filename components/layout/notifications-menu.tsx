@@ -9,6 +9,7 @@ import type { AppNotification } from "@/types"
 import { useAuth } from "@/components/providers/auth-provider"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
+import { WORKER_BASE_URL } from "@/lib/api"
 
 const typeIcon = {
   deadline: Clock,
@@ -55,7 +56,7 @@ export function NotificationsMenu() {
 
     async function fetchNotifications() {
       try {
-        const res = await fetch(`http://localhost:8081/api/worker/notifications/user/${userId}`)
+        const res = await fetch(`${WORKER_BASE_URL}/api/worker/notifications/user/${userId}`)
         if (res.ok) {
           const data = await res.json()
           setItems(data.map(mapWorkerNotification))
@@ -67,7 +68,7 @@ export function NotificationsMenu() {
 
     fetchNotifications()
 
-    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${userId}`)
+    const eventSource = new EventSource(`${WORKER_BASE_URL}/api/worker/notifications/subscribe/${userId}`)
 
     const handleNotification = (event: MessageEvent) => {
       try {
@@ -93,7 +94,7 @@ export function NotificationsMenu() {
   async function markAllRead() {
     if (!user) return
     try {
-      await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}/read-all`, {
+      await fetch(`${WORKER_BASE_URL}/api/worker/notifications/user/${user.id}/read-all`, {
         method: "PUT",
       })
       setItems((prev) => prev.map((n) => ({ ...n, read: true })))
@@ -108,7 +109,7 @@ export function NotificationsMenu() {
 
     try {
       if (!notif.read) {
-        await fetch(`http://localhost:8081/api/worker/notifications/${id}/read`, {
+        await fetch(`${WORKER_BASE_URL}/api/worker/notifications/${id}/read`, {
           method: "PUT",
         })
       }
@@ -194,7 +195,7 @@ export function NotificationsMenu() {
                 if (!selectedNotif) return
                 const id = selectedNotif.id
                 try {
-                  const res = await fetch(`http://localhost:8081/api/worker/notifications/${id}`, {
+                  const res = await fetch(`${WORKER_BASE_URL}/api/worker/notifications/${id}`, {
                     method: "DELETE"
                   })
                   if (res.ok) {

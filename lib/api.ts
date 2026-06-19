@@ -1,4 +1,5 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const WORKER_BASE_URL = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:8081";
 
 export interface BackendUser {
   id: number;

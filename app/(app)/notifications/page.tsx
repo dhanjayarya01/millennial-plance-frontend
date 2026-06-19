@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { timeAgo } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { AppNotification } from "@/types"
+import { WORKER_BASE_URL } from "@/lib/api"
 
 const typeIcon = {
   deadline: Clock,
@@ -63,7 +64,7 @@ export default function NotificationsPage() {
 
     async function fetchNotifications() {
       try {
-        const res = await fetch(`http://localhost:8081/api/worker/notifications/user/${userId}`)
+        const res = await fetch(`${WORKER_BASE_URL}/api/worker/notifications/user/${userId}`)
         if (res.ok) {
           const data = await res.json()
           setItems(data.map(mapWorkerNotification))
@@ -75,7 +76,7 @@ export default function NotificationsPage() {
 
     fetchNotifications()
 
-    const eventSource = new EventSource(`http://localhost:8081/api/worker/notifications/subscribe/${userId}`)
+    const eventSource = new EventSource(`${WORKER_BASE_URL}/api/worker/notifications/subscribe/${userId}`)
 
     const handleNotification = (event: MessageEvent) => {
       try {
@@ -106,7 +107,7 @@ export default function NotificationsPage() {
   async function markAllRead() {
     if (!user) return
     try {
-      await fetch(`http://localhost:8081/api/worker/notifications/user/${user.id}/read-all`, {
+      await fetch(`${WORKER_BASE_URL}/api/worker/notifications/user/${user.id}/read-all`, {
         method: "PUT",
       })
       setItems((prev) => prev.map((n) => ({ ...n, read: true })))
@@ -122,7 +123,7 @@ export default function NotificationsPage() {
     try {
       const newReadState = !notif.read
       if (newReadState) {
-        await fetch(`http://localhost:8081/api/worker/notifications/${id}/read`, {
+        await fetch(`${WORKER_BASE_URL}/api/worker/notifications/${id}/read`, {
           method: "PUT",
         })
       }
@@ -216,7 +217,7 @@ export default function NotificationsPage() {
                       e.stopPropagation()
                       if (!confirm("Are you sure you want to delete this notification?")) return
                       try {
-                        const res = await fetch(`http://localhost:8081/api/worker/notifications/${n.id}`, {
+                        const res = await fetch(`${WORKER_BASE_URL}/api/worker/notifications/${n.id}`, {
                           method: "DELETE"
                         })
                         if (res.ok) {
@@ -255,7 +256,7 @@ export default function NotificationsPage() {
                 if (!selectedNotif) return
                 const id = selectedNotif.id
                 try {
-                  const res = await fetch(`http://localhost:8081/api/worker/notifications/${id}`, {
+                  const res = await fetch(`${WORKER_BASE_URL}/api/worker/notifications/${id}`, {
                     method: "DELETE"
                   })
                   if (res.ok) {
