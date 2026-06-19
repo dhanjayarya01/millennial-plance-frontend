@@ -9,6 +9,7 @@ export const navigationByRole: Record<Role, NavItem[]> = {
     { label: "Tasks", href: "/tasks", icon: "list-checks" },
     { label: "Reports", href: "/reports", icon: "bar-chart-3" },
     { label: "Activity Logs", href: "/activity-logs", icon: "history" },
+    { label: "Notifications", href: "/notifications", icon: "bell" },
     { label: "Settings", href: "/settings", icon: "settings" },
   ],
   manager: [
@@ -17,6 +18,7 @@ export const navigationByRole: Record<Role, NavItem[]> = {
     { label: "Team Tasks", href: "/tasks", icon: "list-checks" },
     { label: "Work Logs", href: "/work-logs", icon: "clipboard-list" },
     { label: "Reports", href: "/reports", icon: "bar-chart-3" },
+    { label: "Notifications", href: "/notifications", icon: "bell" },
     { label: "Settings", href: "/settings", icon: "settings" },
   ],
   employee: [
