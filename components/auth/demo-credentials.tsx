@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils"
 
 const demos = [
   { role: "Admin", email: "admin@millennial.com", password: "Wwewwe12@", icon: Shield },
-  { role: "Manager", email: "manager@test.com", password: "Wwewwe12@", icon: UserCog },
-  { role: "Employee", email: "employee@test.com", password: "Wwewwe12@", icon: User },
+  { role: "Manager", email: "manager1@test.com", password: "Wwewwe12@", icon: UserCog },
+  { role: "Employee", email: "employee1@test.com", password: "Wwewwe12@", icon: User },
 ]
 
 interface DemoCredentialsProps {
