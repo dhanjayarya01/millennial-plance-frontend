@@ -144,14 +144,14 @@ export function Navbar({ onMenuClick }: NavbarProps) {
           className="h-9 w-full rounded-lg border border-input bg-muted/50 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30"
         />
         {isOpen && (
-          <div className="absolute top-full left-0 z-50 mt-1.5 w-full max-h-[28rem] overflow-y-auto rounded-lg border border-border bg-popover p-2 shadow-lg animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="absolute top-full left-0 z-50 mt-1.5 w-full h-80 flex flex-col rounded-lg border border-border bg-popover p-2 shadow-lg animate-in fade-in slide-in-from-top-1 duration-200">
             {isLoading && (
-              <div className="py-6 text-center text-sm text-muted-foreground">
+              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
                 Loading search catalog...
               </div>
             )}
             {!isLoading && searchQuery.trim().length < 2 && (
-              <div className="py-4 text-center text-xs text-muted-foreground">
+              <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
                 Type at least 2 characters to search...
               </div>
             )}
@@ -159,13 +159,13 @@ export function Navbar({ onMenuClick }: NavbarProps) {
              filteredProjects.length === 0 && 
              filteredTasks.length === 0 && 
              filteredUsers.length === 0 && (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                No matches found for <span className="font-semibold text-foreground">"{searchQuery}"</span>
+              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground px-4 text-center">
+                No matches found for <span className="font-semibold text-foreground ml-1">"{searchQuery}"</span>
               </div>
             )}
             
             {!isLoading && searchQuery.trim().length >= 2 && (
-              <div className="flex flex-col gap-2">
+              <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
                 {filteredProjects.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
