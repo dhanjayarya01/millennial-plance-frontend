@@ -1,6 +1,5 @@
 import Link from "next/link"
 import type { ActivityLog, User } from "@/types"
-import { getUserById } from "@/data/dummyUsers"
 import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
@@ -26,7 +25,7 @@ export function ActivityItem({
   users?: User[]
   onClick?: (log: ActivityLog) => void
 }) {
-  const user = users.find((u) => String(u.id) === String(log.userId)) || getUserById(log.userId)
+  const user = users.find((u) => String(u.id) === String(log.userId))
   const accent = log.projectId ? projectColor(log.projectId) : "var(--border)"
   const hasChange = log.oldValue !== "—" || log.newValue !== "—"
 

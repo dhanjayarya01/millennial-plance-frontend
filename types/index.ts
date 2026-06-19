@@ -92,3 +92,9 @@ export interface NavItem {
   href: string
   icon: string
 }
+
+export interface SeriesPoint {
+  label: string
+  value: number
+}
+

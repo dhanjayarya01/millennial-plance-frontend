@@ -1,12 +1,10 @@
-import { dummyActivityLogs } from "@/data/dummyLogs"
-import { getProjectById } from "@/data/dummyProjects"
 import { ActivityItem } from "@/components/shared/activity-item"
 import type { ActivityLog, User } from "@/types"
 
 export function ActivityTimeline({
   limit,
   users = [],
-  customLogs,
+  customLogs = [],
   onLogClick,
 }: {
   limit?: number
@@ -14,7 +12,7 @@ export function ActivityTimeline({
   customLogs?: ActivityLog[]
   onLogClick?: (log: ActivityLog) => void
 }) {
-  const logs = [...(customLogs || dummyActivityLogs)].sort(
+  const logs = [...customLogs].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   )
   const visible = limit ? logs.slice(0, limit) : logs

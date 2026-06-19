@@ -1,4 +1,4 @@
-import type { SeriesPoint } from "@/data/dummyReports"
+import type { SeriesPoint } from "@/types"
 
 interface LineChartProps {
   data: SeriesPoint[]

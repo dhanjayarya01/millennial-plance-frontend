@@ -6,9 +6,6 @@ import { Card } from "@/components/ui/card"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { getUserById } from "@/data/dummyUsers"
-import { getProjectById } from "@/data/dummyProjects"
-import { dummyTasks } from "@/data/dummyTasks"
 import { timeAgo } from "@/lib/format"
 import type { WorkLog, WorkLogReply, User, Task, Project } from "@/types"
 
@@ -27,9 +24,9 @@ export function WorkLogCard({
   tasks?: Task[]
   projects?: Project[]
 }) {
-  const author = users.find((u) => String(u.id) === String(log.authorId)) || getUserById(log.authorId)
-  const task = tasks.find((t) => String(t.id) === String(log.taskId)) || dummyTasks.find((t) => t.id === log.taskId)
-  const project = task ? (projects.find((p) => String(p.id) === String(task.projectId)) || getProjectById(task.projectId)) : undefined
+  const author = users.find((u) => String(u.id) === String(log.authorId))
+  const task = tasks.find((t) => String(t.id) === String(log.taskId))
+  const project = task ? projects.find((p) => String(p.id) === String(task.projectId)) : undefined
   const [draft, setDraft] = useState("")
 
   function submitReply(e: React.FormEvent) {
@@ -95,7 +92,7 @@ export function WorkLogCard({
           {log.replies && log.replies.length > 0 && (
             <ul className="mt-4 flex flex-col gap-3 border-l-2 border-border pl-4">
               {log.replies.map((reply) => {
-                const replyAuthor = users.find((u) => String(u.id) === String(reply.authorId)) || getUserById(reply.authorId)
+                const replyAuthor = users.find((u) => String(u.id) === String(reply.authorId))
                 return (
                   <li key={reply.id} className="flex gap-2.5">
                     <Avatar name={replyAuthor?.name ?? "?"} src={replyAuthor?.avatar} size="sm" />
